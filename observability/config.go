@@ -57,6 +57,14 @@ func NewFromConfig(ctx context.Context, cfg stellarconfig.Config) (*Provider, er
 		signals := cfg.HTTP.Client.Observability
 		providerCfg = append(providerCfg, WithHTTPClientObservability(signals.Trace, signals.Metrics, signals.Logs))
 	}
+	if cfg.Redis != nil {
+		signals := cfg.Redis.Observability
+		providerCfg = append(providerCfg, WithRedisClientObservability(signals.Trace, signals.Metrics, signals.Logs))
+	}
+	if cfg.MySQL != nil {
+		signals := cfg.MySQL.Observability
+		providerCfg = append(providerCfg, WithMySQLClientObservability(signals.Trace, signals.Metrics, signals.Logs))
+	}
 	var shutdowns []func(context.Context) error
 	var metricsHandler http.Handler
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stellhub/stellar/config"
+	stellarhttp "github.com/stellhub/stellar/transport/http"
 )
 
 func TestNewConfiguredStartsConfiguredTransports(t *testing.T) {
@@ -78,6 +79,76 @@ func TestNewConfiguredDoesNotStartGRPCForClientOnlyConfig(t *testing.T) {
 	}
 }
 
+func TestNewConfiguredRegistersRedisAndMySQLClients(t *testing.T) {
+	cfg := config.Config{
+		AppName:     "configured-service",
+		Environment: config.EnvDev,
+		Redis: &config.RedisConfig{
+			Addr: "localhost:6379",
+		},
+		MySQL: &config.MySQLConfig{
+			DSN: "user:pass@tcp(localhost:3306)/app?parseTime=true",
+		},
+	}.Normalize()
+
+	app, err := NewConfigured(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("new configured app: %v", err)
+	}
+	redisClient, ok := app.RedisClient()
+	if !ok || redisClient == nil {
+		t.Fatalf("expected redis client to be registered")
+	}
+	mysqlDB, ok := app.MySQLDB()
+	if !ok || mysqlDB == nil {
+		t.Fatalf("expected mysql db to be registered")
+	}
+	if err := redisClient.Close(); err != nil {
+		t.Fatalf("close redis client: %v", err)
+	}
+	if err := mysqlDB.Close(); err != nil {
+		t.Fatalf("close mysql db: %v", err)
+	}
+}
+
+func TestNewConfiguredRegistersDataDebugAPIsFromConfig(t *testing.T) {
+	enabled := true
+	cfg := config.Config{
+		AppName:     "configured-service",
+		Environment: config.EnvDev,
+		HTTP: config.HTTPConfig{
+			Server: &config.HTTPServerConfig{Port: 18080},
+		},
+		Redis: &config.RedisConfig{
+			Addr:     "localhost:6379",
+			DebugAPI: &config.DebugAPIConfig{Enabled: &enabled},
+		},
+		MySQL: &config.MySQLConfig{
+			DSN:      "user:pass@tcp(localhost:3306)/app?parseTime=true",
+			DebugAPI: &config.DebugAPIConfig{Enabled: &enabled},
+		},
+	}.Normalize()
+
+	app, err := NewConfigured(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("new configured app: %v", err)
+	}
+	defer func() {
+		if redisClient, ok := app.RedisClient(); ok {
+			_ = redisClient.Close()
+		}
+		if mysqlDB, ok := app.MySQLDB(); ok {
+			_ = mysqlDB.Close()
+		}
+	}()
+
+	routes := app.HTTP().Routes()
+	assertRouteExists(t, routes, http.MethodPost, "/redis/items")
+	assertRouteExists(t, routes, http.MethodGet, "/redis/items")
+	assertRouteExists(t, routes, http.MethodPost, "/mysql/items")
+	assertRouteExists(t, routes, http.MethodGet, "/mysql/items")
+}
+
 func TestPortFromAddr(t *testing.T) {
 	tests := map[string]string{
 		":8080":          "8080",
@@ -90,4 +161,14 @@ func TestPortFromAddr(t *testing.T) {
 			t.Fatalf("portFromAddr(%q) = %q, want %q", addr, got, want)
 		}
 	}
+}
+
+func assertRouteExists(t *testing.T, routes []stellarhttp.Route, method string, path string) {
+	t.Helper()
+	for _, route := range routes {
+		if route.Method == method && route.Path == path {
+			return
+		}
+	}
+	t.Fatalf("expected route %s %s", method, path)
 }

@@ -7,7 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/stellhub/stellar/boot"
+	mysqlclient "github.com/stellhub/stellar/clients/mysql"
+	redisclient "github.com/stellhub/stellar/clients/redis"
 	"github.com/stellhub/stellar/config"
 	"github.com/stellhub/stellar/lifecycle"
 	"github.com/stellhub/stellar/observability"
@@ -42,6 +45,16 @@ type GRPCServerConfig = config.GRPCServerConfig
 type GRPCClientConfig = config.GRPCClientConfig
 
 type GRPCNamedClientConfig = config.GRPCNamedClientConfig
+
+type RedisConfig = config.RedisConfig
+
+type MySQLConfig = config.MySQLConfig
+
+type DebugAPIConfig = config.DebugAPIConfig
+
+type RedisClient = goredis.Client
+
+type MySQLDB = mysqlclient.DB
 
 type Runtime = boot.Runtime
 
@@ -95,6 +108,11 @@ const (
 )
 
 var ErrAppNameRequired = boot.ErrAppNameRequired
+
+const (
+	RedisClientName = redisclient.DefaultClientName
+	MySQLDBName     = mysqlclient.DefaultDBName
+)
 
 func New(cfg Config, options ...Option) *App {
 	return boot.New(cfg, options...)

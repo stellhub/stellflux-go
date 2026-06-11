@@ -84,6 +84,43 @@ type GRPCNamedClientConfig struct {
 	Insecure  *bool  `yaml:"insecure"`
 }
 
+type RedisConfig struct {
+	Enabled       *bool                     `yaml:"enabled"`
+	Addr          string                    `yaml:"addr"`
+	Username      string                    `yaml:"username"`
+	Password      string                    `yaml:"password"`
+	DB            int                       `yaml:"db"`
+	ClientName    string                    `yaml:"client_name"`
+	Protocol      int                       `yaml:"protocol"`
+	MaxRetries    int                       `yaml:"max_retries"`
+	PoolSize      int                       `yaml:"pool_size"`
+	MinIdleConns  int                       `yaml:"min_idle_conns"`
+	DialTimeout   string                    `yaml:"dial_timeout"`
+	ReadTimeout   string                    `yaml:"read_timeout"`
+	WriteTimeout  string                    `yaml:"write_timeout"`
+	Observability ObservabilitySignalConfig `yaml:"observability"`
+	DebugAPI      *DebugAPIConfig           `yaml:"debug_api"`
+}
+
+type MySQLConfig struct {
+	Enabled         *bool                     `yaml:"enabled"`
+	Driver          string                    `yaml:"driver"`
+	DSN             string                    `yaml:"dsn"`
+	MaxOpenConns    int                       `yaml:"max_open_conns"`
+	MaxIdleConns    int                       `yaml:"max_idle_conns"`
+	ConnMaxLifetime string                    `yaml:"conn_max_lifetime"`
+	ConnMaxIdleTime string                    `yaml:"conn_max_idle_time"`
+	PingOnStartup   bool                      `yaml:"ping_on_startup"`
+	PingTimeout     string                    `yaml:"ping_timeout"`
+	Observability   ObservabilitySignalConfig `yaml:"observability"`
+	DebugAPI        *DebugAPIConfig           `yaml:"debug_api"`
+}
+
+type DebugAPIConfig struct {
+	Enabled *bool  `yaml:"enabled"`
+	Prefix  string `yaml:"prefix"`
+}
+
 type Config struct {
 	AppName     string
 	Environment Environment
@@ -92,6 +129,8 @@ type Config struct {
 	Disabled    bool
 	HTTP        HTTPConfig
 	GRPC        GRPCConfig
+	Redis       *RedisConfig
+	MySQL       *MySQLConfig
 	Starter     StarterConfig
 	Metadata    map[string]string
 }
@@ -154,6 +193,8 @@ type fileConfig struct {
 	App           appFileConfig               `yaml:"app"`
 	HTTP          *HTTPConfig                 `yaml:"http"`
 	GRPC          *GRPCConfig                 `yaml:"grpc"`
+	Redis         *RedisConfig                `yaml:"redis"`
+	MySQL         *MySQLConfig                `yaml:"mysql"`
 	OpenTelemetry *OpenTelemetryStarterConfig `yaml:"opentelemetry"`
 }
 
@@ -190,6 +231,20 @@ func (c Config) Normalize() Config {
 		c.GRPC = *c.Starter.GRPC
 	}
 	c.GRPC = c.GRPC.Normalize()
+	if c.Redis != nil {
+		redis := *c.Redis
+		if strings.TrimSpace(redis.Addr) == "" {
+			redis.Addr = "localhost:6379"
+		}
+		c.Redis = &redis
+	}
+	if c.MySQL != nil {
+		mysql := *c.MySQL
+		if strings.TrimSpace(mysql.Driver) == "" {
+			mysql.Driver = "mysql"
+		}
+		c.MySQL = &mysql
+	}
 	if c.Metadata == nil {
 		c.Metadata = map[string]string{}
 		return c
@@ -359,6 +414,8 @@ func LoadFile(path string) (Config, error) {
 		Disabled:    raw.App.Disabled,
 		HTTP:        derefHTTPConfig(raw.HTTP),
 		GRPC:        derefGRPCConfig(raw.GRPC),
+		Redis:       raw.Redis,
+		MySQL:       raw.MySQL,
 		Starter: StarterConfig{
 			HTTP:          raw.HTTP,
 			GRPC:          raw.GRPC,

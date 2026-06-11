@@ -2,8 +2,11 @@ package boot
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
+	mysqlclient "github.com/stellhub/stellar/clients/mysql"
+	redisclient "github.com/stellhub/stellar/clients/redis"
 	"github.com/stellhub/stellar/config"
 	"github.com/stellhub/stellar/lifecycle"
 	"github.com/stellhub/stellar/observability"
@@ -46,6 +49,12 @@ func NewConfigured(ctx context.Context, cfg config.Config, options ...Option) (*
 		}
 	}
 	configureGRPCStarter(app, cfg)
+	if err := configureRedisStarter(app, cfg); err != nil {
+		return nil, err
+	}
+	if err := configureMySQLStarter(ctx, app, cfg); err != nil {
+		return nil, err
+	}
 	return app, nil
 }
 
@@ -98,4 +107,50 @@ func configureGRPCStarter(app *App, cfg config.Config) bool {
 		app.setRPCAdapter(grpcgoadapter.New(cfg.GRPC.ServerAddr()), true)
 	}
 	return true
+}
+
+func configureRedisStarter(app *App, cfg config.Config) error {
+	if cfg.Redis == nil {
+		return nil
+	}
+	if cfg.Redis.Enabled != nil && !*cfg.Redis.Enabled {
+		return nil
+	}
+
+	client, err := redisclient.NewClientFromConfig(cfg.Redis, app.observability)
+	if err != nil {
+		return fmt.Errorf("configure redis client: %w", err)
+	}
+	app.registry.Set(redisclient.DefaultClientName, client)
+	registerRedisDebugAPI(app, cfg.Redis)
+	app.lifecycle.Append(lifecycle.Hook{
+		Name: redisclient.DefaultClientName,
+		OnStop: func(context.Context) error {
+			return client.Close()
+		},
+	})
+	return nil
+}
+
+func configureMySQLStarter(ctx context.Context, app *App, cfg config.Config) error {
+	if cfg.MySQL == nil {
+		return nil
+	}
+	if cfg.MySQL.Enabled != nil && !*cfg.MySQL.Enabled {
+		return nil
+	}
+
+	db, err := mysqlclient.NewDBFromConfig(ctx, cfg.MySQL, app.observability)
+	if err != nil {
+		return fmt.Errorf("configure mysql client: %w", err)
+	}
+	app.registry.Set(mysqlclient.DefaultDBName, db)
+	registerMySQLDebugAPI(app, cfg.MySQL)
+	app.lifecycle.Append(lifecycle.Hook{
+		Name: mysqlclient.DefaultDBName,
+		OnStop: func(context.Context) error {
+			return db.Close()
+		},
+	})
+	return nil
 }

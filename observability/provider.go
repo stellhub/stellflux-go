@@ -32,10 +32,18 @@ type Provider struct {
 	httpClientTrace       bool
 	httpClientMetrics     bool
 	httpClientLogsEnabled bool
+	redisClientTrace      bool
+	redisClientMetrics    bool
+	redisClientLogs       bool
+	mysqlClientTrace      bool
+	mysqlClientMetrics    bool
+	mysqlClientLogs       bool
 
 	httpServerRequests metric.Int64Counter
 	httpServerDuration metric.Float64Histogram
 	httpClientLogger   log.Logger
+	redisClientLogger  log.Logger
+	mysqlClientLogger  log.Logger
 	metricsHandler     http.Handler
 	shutdowns          []func(context.Context) error
 }
@@ -43,17 +51,23 @@ type Provider struct {
 type Option func(*providerConfig)
 
 type providerConfig struct {
-	serviceName       string
-	tracerProvider    trace.TracerProvider
-	meterProvider     metric.MeterProvider
-	loggerProvider    log.LoggerProvider
-	propagator        propagation.TextMapPropagator
-	httpServerTrace   *bool
-	httpServerMetrics *bool
-	httpServerLogs    *bool
-	httpClientTrace   *bool
-	httpClientMetrics *bool
-	httpClientLogs    *bool
+	serviceName        string
+	tracerProvider     trace.TracerProvider
+	meterProvider      metric.MeterProvider
+	loggerProvider     log.LoggerProvider
+	propagator         propagation.TextMapPropagator
+	httpServerTrace    *bool
+	httpServerMetrics  *bool
+	httpServerLogs     *bool
+	httpClientTrace    *bool
+	httpClientMetrics  *bool
+	httpClientLogs     *bool
+	redisClientTrace   *bool
+	redisClientMetrics *bool
+	redisClientLogs    *bool
+	mysqlClientTrace   *bool
+	mysqlClientMetrics *bool
+	mysqlClientLogs    *bool
 }
 
 func New(options ...Option) *Provider {
@@ -84,8 +98,20 @@ func New(options ...Option) *Provider {
 		httpClientTrace:       boolValue(cfg.httpClientTrace, true),
 		httpClientMetrics:     boolValue(cfg.httpClientMetrics, true),
 		httpClientLogsEnabled: boolValue(cfg.httpClientLogs, true),
+		redisClientTrace:      boolValue(cfg.redisClientTrace, true),
+		redisClientMetrics:    boolValue(cfg.redisClientMetrics, true),
+		redisClientLogs:       boolValue(cfg.redisClientLogs, true),
+		mysqlClientTrace:      boolValue(cfg.mysqlClientTrace, true),
+		mysqlClientMetrics:    boolValue(cfg.mysqlClientMetrics, true),
+		mysqlClientLogs:       boolValue(cfg.mysqlClientLogs, true),
 		httpClientLogger: cfg.loggerProvider.Logger(
 			ScopeName + "/http-client",
+		),
+		redisClientLogger: cfg.loggerProvider.Logger(
+			ScopeName + "/redis-client",
+		),
+		mysqlClientLogger: cfg.loggerProvider.Logger(
+			ScopeName + "/mysql-client",
 		),
 		propagator: cfg.propagator,
 	}
@@ -147,6 +173,22 @@ func WithHTTPClientObservability(trace *bool, metrics *bool, logs *bool) Option 
 	}
 }
 
+func WithRedisClientObservability(trace *bool, metrics *bool, logs *bool) Option {
+	return func(cfg *providerConfig) {
+		cfg.redisClientTrace = trace
+		cfg.redisClientMetrics = metrics
+		cfg.redisClientLogs = logs
+	}
+}
+
+func WithMySQLClientObservability(trace *bool, metrics *bool, logs *bool) Option {
+	return func(cfg *providerConfig) {
+		cfg.mysqlClientTrace = trace
+		cfg.mysqlClientMetrics = metrics
+		cfg.mysqlClientLogs = logs
+	}
+}
+
 func (p *Provider) ServiceName() string {
 	if p == nil {
 		return ""
@@ -201,6 +243,48 @@ func (p *Provider) Propagator() propagation.TextMapPropagator {
 		return propagation.TraceContext{}
 	}
 	return p.propagator
+}
+
+func (p *Provider) RedisClientTraceEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.redisClientTrace
+}
+
+func (p *Provider) RedisClientMetricsEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.redisClientMetrics
+}
+
+func (p *Provider) RedisClientLogsEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.redisClientLogs
+}
+
+func (p *Provider) MySQLClientTraceEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.mysqlClientTrace
+}
+
+func (p *Provider) MySQLClientMetricsEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.mysqlClientMetrics
+}
+
+func (p *Provider) MySQLClientLogsEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.mysqlClientLogs
 }
 
 func (p *Provider) MetricsHandler() http.Handler {

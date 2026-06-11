@@ -1,0 +1,35 @@
+app:
+  name: stellar-redis-example
+  env: dev
+  zone: local
+
+http:
+  server:
+    enabled: true
+    port: 18081
+    adapter: gin
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+
+redis:
+  enabled: true
+  addr: localhost:6379
+  db: 0
+  pool_size: 16
+  debug_api:
+    enabled: true
+    prefix: /redis
+  observability:
+    trace: true
+    metrics: true
+    logs: true
+
+opentelemetry:
+  log:
+    enabled: false
+    output: stdout
+  trace: false
+  metrics: false
+  trace_output: none

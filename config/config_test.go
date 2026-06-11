@@ -63,6 +63,35 @@ grpc:
       order-service:
         target: dns:///localhost:19092
         timeout: 5s
+redis:
+  enabled: true
+  addr: localhost:6379
+  db: 1
+  pool_size: 16
+  dial_timeout: 2s
+  read_timeout: 1s
+  write_timeout: 1s
+  debug_api:
+    enabled: true
+    prefix: /redis
+  observability:
+    trace: true
+    metrics: true
+    logs: true
+mysql:
+  enabled: true
+  dsn: user:pass@tcp(localhost:3306)/orders?parseTime=true
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+  conn_max_idle_time: 5m
+  debug_api:
+    enabled: true
+    prefix: /mysql
+  observability:
+    trace: true
+    metrics: true
+    logs: true
 opentelemetry:
   log: true
   trace: true
@@ -127,6 +156,24 @@ opentelemetry:
 	grpcUserClient := cfg.GRPC.Client.Clients["user-service"]
 	if grpcUserClient.Target != "dns:///localhost:19091" || grpcUserClient.Timeout != "2s" {
 		t.Fatalf("unexpected grpc user-service client config %#v", grpcUserClient)
+	}
+	if cfg.Redis == nil || cfg.Redis.Addr != "localhost:6379" || cfg.Redis.DB != 1 {
+		t.Fatalf("unexpected redis config %#v", cfg.Redis)
+	}
+	if cfg.Redis.DebugAPI == nil || cfg.Redis.DebugAPI.Enabled == nil || !*cfg.Redis.DebugAPI.Enabled || cfg.Redis.DebugAPI.Prefix != "/redis" {
+		t.Fatalf("unexpected redis debug api config %#v", cfg.Redis.DebugAPI)
+	}
+	if cfg.Redis.Observability.Logs == nil || !*cfg.Redis.Observability.Logs {
+		t.Fatalf("expected redis logs observability")
+	}
+	if cfg.MySQL == nil || cfg.MySQL.Driver != "mysql" || cfg.MySQL.MaxOpenConns != 25 {
+		t.Fatalf("unexpected mysql config %#v", cfg.MySQL)
+	}
+	if cfg.MySQL.DebugAPI == nil || cfg.MySQL.DebugAPI.Enabled == nil || !*cfg.MySQL.DebugAPI.Enabled || cfg.MySQL.DebugAPI.Prefix != "/mysql" {
+		t.Fatalf("unexpected mysql debug api config %#v", cfg.MySQL.DebugAPI)
+	}
+	if cfg.MySQL.Observability.Metrics == nil || !*cfg.MySQL.Observability.Metrics {
+		t.Fatalf("expected mysql metrics observability")
 	}
 	if cfg.Starter.OpenTelemetry == nil || !cfg.Starter.OpenTelemetry.Log.Enabled {
 		t.Fatalf("expected opentelemetry log starter")

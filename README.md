@@ -121,6 +121,33 @@ grpc:
       order-service:
         target: dns:///localhost:9092
         timeout: 5s
+redis:
+  enabled: true
+  addr: localhost:6379
+  db: 0
+  pool_size: 16
+  debug_api:
+    enabled: true
+    prefix: /redis
+  observability:
+    trace: true
+    metrics: true
+    logs: true
+mysql:
+  enabled: true
+  dsn: user:password@tcp(localhost:3306)/example?parseTime=true
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+  conn_max_idle_time: 5m
+  ping_on_startup: false
+  debug_api:
+    enabled: true
+    prefix: /mysql
+  observability:
+    trace: true
+    metrics: true
+    logs: true
 opentelemetry:
   trace: true
   metrics: true
@@ -227,9 +254,108 @@ grpc:
         timeout: 5s
 ```
 
+## Data Clients
+
+Stellar can create standard Redis and MySQL clients from `application.yml`.
+
+Redis uses `github.com/redis/go-redis/v9`; MySQL uses the standard `database/sql` API with `github.com/go-sql-driver/mysql`.
+
+```yaml
+redis:
+  enabled: true
+  addr: localhost:6379
+  db: 0
+  pool_size: 16
+  debug_api:
+    enabled: true
+    prefix: /redis
+  observability:
+    trace: true
+    metrics: true
+    logs: true
+
+mysql:
+  enabled: true
+  dsn: user:password@tcp(localhost:3306)/example?parseTime=true
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+  conn_max_idle_time: 5m
+  ping_on_startup: false
+  debug_api:
+    enabled: true
+    prefix: /mysql
+  observability:
+    trace: true
+    metrics: true
+    logs: true
+```
+
+When using the programmatic API:
+
+```go
+redisClient, ok := app.RedisClient()
+mysqlDB, ok := app.MySQLDB()
+```
+
+Run the standalone data client examples:
+
+```bash
+go run ./examples/redis-example
+go run ./examples/mysql-example
+```
+
+Both examples use only:
+
+```go
+stellar.Start()
+```
+
+Redis/MySQL clients and debug APIs are enabled by `application.yml`, not by passing explicit starters in `main`.
+
+Redis example API:
+
+```text
+POST   http://localhost:18081/redis/items
+GET    http://localhost:18081/redis/items?key=demo
+PUT    http://localhost:18081/redis/items
+DELETE http://localhost:18081/redis/items?key=demo
+GET    http://localhost:18081/redis/keys?pattern=*&limit=20
+```
+
+Redis create/update body:
+
+```json
+{
+  "key": "demo",
+  "value": "hello",
+  "ttl": "5m"
+}
+```
+
+MySQL example API:
+
+```text
+POST   http://localhost:18082/mysql/items
+GET    http://localhost:18082/mysql/items?id=1
+PUT    http://localhost:18082/mysql/items
+DELETE http://localhost:18082/mysql/items?id=1
+GET    http://localhost:18082/mysql/items/list?limit=20
+```
+
+MySQL create/update body:
+
+```json
+{
+  "id": 1,
+  "name": "demo",
+  "value": "hello"
+}
+```
+
 ## OpenTelemetry
 
-Stellar instruments HTTP server, gRPC server, HTTP client, and gRPC client with OpenTelemetry trace, logs, and metrics.
+Stellar instruments HTTP server, gRPC server, HTTP client, gRPC client, Redis client, and MySQL client with OpenTelemetry trace, logs, and metrics.
 
 Stellar reads `application.yml` or `application.yaml` from the directory that contains `main.go`, then from the current working directory.
 
