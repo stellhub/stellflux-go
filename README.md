@@ -94,7 +94,7 @@ GET http://localhost:8080/stellflux/status
 | AppName | Yes | Logical application name |
 | Environment | Yes | Runtime environment, such as `dev`, `uat`, `pre`, or `prod` |
 | Zone | No | Availability zone or logical deployment zone |
-| Enabled | No | Whether framework modules are enabled |
+| Disabled | No | Whether framework modules should be skipped during startup |
 
 ## Architecture
 
@@ -138,4 +138,4 @@ StellFlux Go follows semantic versioning once the public API stabilizes:
 
 ## License
 
-The license is defined by the repository `LICENSE` file.
+The license will be defined before the first stable release.

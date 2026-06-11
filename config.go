@@ -13,15 +13,12 @@ type Config struct {
 	AppName     string
 	Environment Environment
 	Zone        string
-	Enabled     bool
+	Disabled    bool
 }
 
 func (c Config) Normalize() Config {
 	if c.Environment == "" {
 		c.Environment = EnvDev
-	}
-	if !c.Enabled {
-		c.Enabled = true
 	}
 	return c
 }

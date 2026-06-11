@@ -67,7 +67,7 @@ func (a *App) Start(ctx context.Context) error {
 	if a.started {
 		return nil
 	}
-	if !a.config.Enabled {
+	if a.config.Disabled {
 		a.started = true
 		return nil
 	}
