@@ -1,0 +1,37 @@
+app:
+  name: stellar-grpc-example
+  env: dev
+  zone: local
+
+grpc:
+  server:
+    enabled: true
+    port: 19090
+    adapter: grpc-go
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+  client:
+    enabled: true
+    timeout: 3s
+    insecure: true
+    observability:
+      trace: true
+      metrics: true
+      logs: false
+    clients:
+      user-service:
+        target: dns:///localhost:19091
+        timeout: 2s
+      order-service:
+        target: dns:///localhost:19092
+        timeout: 5s
+
+opentelemetry:
+  log:
+    enabled: false
+    output: stdout
+  trace: false
+  metrics: false
+  trace_output: none

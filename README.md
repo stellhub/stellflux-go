@@ -52,32 +52,84 @@ Create an application:
 package main
 
 import (
-	"context"
 	"log"
 
 	"github.com/stellhub/stellar"
 )
 
 func main() {
-	app := stellar.New(stellar.Config{
-		AppName:     "example-service",
-		Environment: stellar.EnvDev,
-		Zone:        "local",
-	})
-
-	app.Use(stellar.StandardModules()...)
-
-	if err := app.Start(context.Background()); err != nil {
+	if err := stellar.Start(); err != nil {
 		log.Fatal(err)
 	}
-	defer app.Stop(context.Background())
 }
 ```
 
-Run the included example:
+Add `application.yml`:
+
+```yaml
+app:
+  name: example-service
+  env: dev
+  zone: local
+http:
+  server:
+    enabled: true
+    port: 8080
+    adapter: gin
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+  client:
+    enabled: true
+    timeout: 3s
+    max_idle_conns: 100
+    max_idle_conns_per_host: 10
+    idle_conn_timeout: 90s
+    observability:
+      trace: true
+      metrics: true
+      logs: false
+    clients:
+      user-service:
+        base_url: http://localhost:8081
+        timeout: 2s
+      order-service:
+        base_url: http://localhost:8082
+        timeout: 5s
+grpc:
+  server:
+    enabled: true
+    port: 9090
+    adapter: grpc-go
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+  client:
+    enabled: true
+    timeout: 3s
+    insecure: true
+    observability:
+      trace: true
+      metrics: true
+      logs: false
+    clients:
+      user-service:
+        target: dns:///localhost:9091
+        timeout: 2s
+      order-service:
+        target: dns:///localhost:9092
+        timeout: 5s
+opentelemetry:
+  trace: true
+  metrics: true
+```
+
+Run the included HTTP example:
 
 ```bash
-go run ./cmd/stellar-example
+go run ./examples/http-examples
 ```
 
 Then open:
@@ -85,6 +137,145 @@ Then open:
 ```text
 GET http://localhost:8080/health
 GET http://localhost:8080/stellar/status
+GET http://localhost:8080/metrics
+```
+
+Run the included gRPC example:
+
+```bash
+go run ./examples/grpc-examples
+```
+
+## Transport Adapters
+
+Stellar keeps HTTP and RPC behind adapter interfaces.
+
+| Layer | Default | Optional implementations |
+| --- | --- | --- |
+| HTTP | Gin | Hertz, Chi |
+| RPC | gRPC-Go | Other RPC adapters can be added later |
+
+HTTP applications can switch adapters without changing business handlers:
+
+```go
+app := stellar.New(cfg, stellar.WithHTTPServer(":8080")) // default Gin
+```
+
+HTTP server and HTTP client use separate configuration sections:
+
+```yaml
+http:
+  server:
+    enabled: true
+    port: 8080
+    adapter: gin
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+  client:
+    enabled: true
+    timeout: 3s
+    max_idle_conns: 100
+    max_idle_conns_per_host: 10
+    idle_conn_timeout: 90s
+    observability:
+      trace: true
+      metrics: true
+      logs: false
+    clients:
+      user-service:
+        base_url: http://localhost:8081
+        timeout: 2s
+      order-service:
+        base_url: http://localhost:8082
+        timeout: 5s
+```
+
+RPC applications use the same lifecycle model:
+
+```go
+app := stellar.New(cfg, stellar.WithRPCServer(":9090")) // default gRPC-Go
+```
+
+gRPC server and gRPC client also use separate configuration sections. Only `grpc.server` starts a listener; `grpc.client` only configures outbound client connections:
+
+```yaml
+grpc:
+  server:
+    enabled: true
+    port: 9090
+    adapter: grpc-go
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+  client:
+    enabled: true
+    timeout: 3s
+    insecure: true
+    observability:
+      trace: true
+      metrics: true
+      logs: false
+    clients:
+      user-service:
+        target: dns:///localhost:9091
+        timeout: 2s
+      order-service:
+        target: dns:///localhost:9092
+        timeout: 5s
+```
+
+## OpenTelemetry
+
+Stellar instruments HTTP server, gRPC server, HTTP client, and gRPC client with OpenTelemetry trace, logs, and metrics.
+
+Stellar reads `application.yml` or `application.yaml` from the directory that contains `main.go`, then from the current working directory.
+
+OpenTelemetry defaults:
+
+- `log`: defaults to local `stdout`/`stderr`; set `log.enabled: false` with `log.output: file` for local rolling files, or set `log.enabled: true` for OTLP export to `localhost:4317`.
+- `trace`: when enabled, spans are generated without export; set `trace_output: otlp` for `localhost:4317`.
+- `metrics`: when enabled, exposes `/metrics` on the configured HTTP port; set `metrics_output: otlp` for `localhost:4317`.
+
+Example with explicit OTLP output:
+
+```yaml
+opentelemetry:
+  log:
+    enabled: true
+    endpoint: localhost:4317
+  trace: true
+  metrics: true
+  endpoint: localhost:4317
+  trace_output: otlp
+  metrics_output: otlp
+```
+
+Example with local rolling files:
+
+```yaml
+opentelemetry:
+  log:
+    enabled: false
+    output: file
+    dir: logs
+    file_name: app.log
+    max_size_bytes: 104857600
+    max_backups: 5
+```
+
+When using the programmatic API, create an instrumented HTTP client:
+
+```go
+client, baseURL, err := app.NewHTTPClient("user-service")
+```
+
+When using the programmatic API, create an instrumented gRPC-Go client:
+
+```go
+conn, _, err := app.NewGRPCClient(context.Background(), "user-service")
 ```
 
 ## Configuration Model

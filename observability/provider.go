@@ -1,0 +1,277 @@
+package observability
+
+import (
+	"context"
+	stderrors "errors"
+	"net/http"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/log"
+	logglobal "go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const ScopeName = "github.com/stellhub/stellar"
+
+type Provider struct {
+	serviceName           string
+	tracerProvider        trace.TracerProvider
+	meterProvider         metric.MeterProvider
+	loggerProvider        log.LoggerProvider
+	tracer                trace.Tracer
+	meter                 metric.Meter
+	logger                log.Logger
+	propagator            propagation.TextMapPropagator
+	httpServerTrace       bool
+	httpServerMetrics     bool
+	httpServerLogs        bool
+	httpClientTrace       bool
+	httpClientMetrics     bool
+	httpClientLogsEnabled bool
+
+	httpServerRequests metric.Int64Counter
+	httpServerDuration metric.Float64Histogram
+	httpClientLogger   log.Logger
+	metricsHandler     http.Handler
+	shutdowns          []func(context.Context) error
+}
+
+type Option func(*providerConfig)
+
+type providerConfig struct {
+	serviceName       string
+	tracerProvider    trace.TracerProvider
+	meterProvider     metric.MeterProvider
+	loggerProvider    log.LoggerProvider
+	propagator        propagation.TextMapPropagator
+	httpServerTrace   *bool
+	httpServerMetrics *bool
+	httpServerLogs    *bool
+	httpClientTrace   *bool
+	httpClientMetrics *bool
+	httpClientLogs    *bool
+}
+
+func New(options ...Option) *Provider {
+	cfg := providerConfig{
+		tracerProvider: otel.GetTracerProvider(),
+		meterProvider:  otel.GetMeterProvider(),
+		loggerProvider: logglobal.GetLoggerProvider(),
+		propagator:     otel.GetTextMapPropagator(),
+	}
+	for _, option := range options {
+		option(&cfg)
+	}
+	if cfg.propagator == nil {
+		cfg.propagator = propagation.TraceContext{}
+	}
+
+	provider := &Provider{
+		serviceName:           cfg.serviceName,
+		tracerProvider:        cfg.tracerProvider,
+		meterProvider:         cfg.meterProvider,
+		loggerProvider:        cfg.loggerProvider,
+		tracer:                cfg.tracerProvider.Tracer(ScopeName),
+		meter:                 cfg.meterProvider.Meter(ScopeName),
+		logger:                cfg.loggerProvider.Logger(ScopeName),
+		httpServerTrace:       boolValue(cfg.httpServerTrace, true),
+		httpServerMetrics:     boolValue(cfg.httpServerMetrics, true),
+		httpServerLogs:        boolValue(cfg.httpServerLogs, true),
+		httpClientTrace:       boolValue(cfg.httpClientTrace, true),
+		httpClientMetrics:     boolValue(cfg.httpClientMetrics, true),
+		httpClientLogsEnabled: boolValue(cfg.httpClientLogs, true),
+		httpClientLogger: cfg.loggerProvider.Logger(
+			ScopeName + "/http-client",
+		),
+		propagator: cfg.propagator,
+	}
+	provider.initHTTPMetrics()
+	return provider
+}
+
+func WithServiceName(serviceName string) Option {
+	return func(cfg *providerConfig) {
+		cfg.serviceName = serviceName
+	}
+}
+
+func WithTracerProvider(provider trace.TracerProvider) Option {
+	return func(cfg *providerConfig) {
+		if provider != nil {
+			cfg.tracerProvider = provider
+		}
+	}
+}
+
+func WithMeterProvider(provider metric.MeterProvider) Option {
+	return func(cfg *providerConfig) {
+		if provider != nil {
+			cfg.meterProvider = provider
+		}
+	}
+}
+
+func WithLoggerProvider(provider log.LoggerProvider) Option {
+	return func(cfg *providerConfig) {
+		if provider != nil {
+			cfg.loggerProvider = provider
+		}
+	}
+}
+
+func WithPropagator(propagator propagation.TextMapPropagator) Option {
+	return func(cfg *providerConfig) {
+		if propagator != nil {
+			cfg.propagator = propagator
+		}
+	}
+}
+
+func WithHTTPServerObservability(trace *bool, metrics *bool, logs *bool) Option {
+	return func(cfg *providerConfig) {
+		cfg.httpServerTrace = trace
+		cfg.httpServerMetrics = metrics
+		cfg.httpServerLogs = logs
+	}
+}
+
+func WithHTTPClientObservability(trace *bool, metrics *bool, logs *bool) Option {
+	return func(cfg *providerConfig) {
+		cfg.httpClientTrace = trace
+		cfg.httpClientMetrics = metrics
+		cfg.httpClientLogs = logs
+	}
+}
+
+func (p *Provider) ServiceName() string {
+	if p == nil {
+		return ""
+	}
+	return p.serviceName
+}
+
+func (p *Provider) Tracer() trace.Tracer {
+	if p == nil {
+		return New().Tracer()
+	}
+	return p.tracer
+}
+
+func (p *Provider) TracerProvider() trace.TracerProvider {
+	if p == nil || p.tracerProvider == nil {
+		return otel.GetTracerProvider()
+	}
+	return p.tracerProvider
+}
+
+func (p *Provider) Meter() metric.Meter {
+	if p == nil {
+		return New().Meter()
+	}
+	return p.meter
+}
+
+func (p *Provider) MeterProvider() metric.MeterProvider {
+	if p == nil || p.meterProvider == nil {
+		return otel.GetMeterProvider()
+	}
+	return p.meterProvider
+}
+
+func (p *Provider) Logger() log.Logger {
+	if p == nil {
+		return New().Logger()
+	}
+	return p.logger
+}
+
+func (p *Provider) LoggerProvider() log.LoggerProvider {
+	if p == nil || p.loggerProvider == nil {
+		return logglobal.GetLoggerProvider()
+	}
+	return p.loggerProvider
+}
+
+func (p *Provider) Propagator() propagation.TextMapPropagator {
+	if p == nil || p.propagator == nil {
+		return propagation.TraceContext{}
+	}
+	return p.propagator
+}
+
+func (p *Provider) MetricsHandler() http.Handler {
+	if p == nil {
+		return nil
+	}
+	return p.metricsHandler
+}
+
+func (p *Provider) Shutdown(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+	var joined error
+	for i := len(p.shutdowns) - 1; i >= 0; i-- {
+		if err := p.shutdowns[i](ctx); err != nil {
+			joined = stderrors.Join(joined, err)
+		}
+	}
+	return joined
+}
+
+func (p *Provider) ExtractHTTP(ctx context.Context, header http.Header) context.Context {
+	if p == nil {
+		return ctx
+	}
+	return p.Propagator().Extract(ctx, propagation.HeaderCarrier(header))
+}
+
+func (p *Provider) InjectHTTP(ctx context.Context, header http.Header) {
+	if p == nil {
+		return
+	}
+	p.Propagator().Inject(ctx, propagation.HeaderCarrier(header))
+}
+
+func (p *Provider) initHTTPMetrics() {
+	if p == nil || p.meter == nil {
+		return
+	}
+	requests, err := p.meter.Int64Counter(
+		"http.server.request.count",
+		metric.WithDescription("Number of inbound HTTP server requests."),
+	)
+	if err == nil {
+		p.httpServerRequests = requests
+	}
+	duration, err := p.meter.Float64Histogram(
+		"http.server.request.duration",
+		metric.WithDescription("Duration of inbound HTTP server requests."),
+		metric.WithUnit("s"),
+	)
+	if err == nil {
+		p.httpServerDuration = duration
+	}
+}
+
+func (p *Provider) commonAttrs() []attribute.KeyValue {
+	if p == nil || p.serviceName == "" {
+		return nil
+	}
+	return []attribute.KeyValue{attribute.String("service.name", p.serviceName)}
+}
+
+func durationSeconds(start time.Time) float64 {
+	return time.Since(start).Seconds()
+}
+
+func boolValue(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}

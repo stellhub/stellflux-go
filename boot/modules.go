@@ -1,4 +1,4 @@
-package stellar
+package boot
 
 import "context"
 
@@ -25,14 +25,21 @@ func (m *StandardModule) Standard() MiddlewareStandard {
 	return m.standard
 }
 
-func (m *StandardModule) Start(_ context.Context, _ Runtime) error {
+func (m *StandardModule) Start(context.Context, Runtime) error {
 	m.started = true
 	return nil
 }
 
-func (m *StandardModule) Stop(_ context.Context) error {
+func (m *StandardModule) Stop(context.Context) error {
 	m.started = false
 	return nil
+}
+
+func (m *StandardModule) Health(context.Context) HealthCheck {
+	if !m.started {
+		return HealthCheck{Name: m.Name(), Status: HealthStatusSkipped}
+	}
+	return HealthCheck{Name: m.Name(), Status: HealthStatusUp}
 }
 
 func StandardModules() []Module {

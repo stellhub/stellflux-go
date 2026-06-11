@@ -19,6 +19,9 @@ func TestAppLifecycle(t *testing.T) {
 	if got := len(app.Modules()); got != 7 {
 		t.Fatalf("expected 7 standard modules, got %d", got)
 	}
+	if got := app.Health(context.Background()).Status; got != HealthStatusUp {
+		t.Fatalf("expected health %s, got %s", HealthStatusUp, got)
+	}
 	if err := app.Stop(context.Background()); err != nil {
 		t.Fatalf("stop app: %v", err)
 	}
