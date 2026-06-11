@@ -10,25 +10,25 @@ import (
 	"syscall"
 	"time"
 
-	stellflux "github.com/stellhub/stellflux-go"
+	"github.com/stellhub/stellar"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	app := stellflux.New(stellflux.Config{
-		AppName:     "stellflux-go-example",
-		Environment: stellflux.EnvDev,
+	app := stellar.New(stellar.Config{
+		AppName:     "stellar-example",
+		Environment: stellar.EnvDev,
 		Zone:        "local",
-	}, stellflux.WithLogger(logger))
-	app.Use(stellflux.StandardModules()...)
+	}, stellar.WithLogger(logger))
+	app.Use(stellar.StandardModules()...)
 
 	if err := app.Start(context.Background()); err != nil {
-		logger.Error("failed to start StellFlux Go", "error", err)
+		logger.Error("failed to start Stellar", "error", err)
 		os.Exit(1)
 	}
 
 	server := &http.Server{
-		Addr:              getenv("STELLFLUX_HTTP_ADDR", ":8080"),
+		Addr:              getenv("STELLAR_HTTP_ADDR", ":8080"),
 		Handler:           app.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -37,7 +37,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		logger.Info("starting StellFlux Go example", "address", server.Addr)
+		logger.Info("starting Stellar example", "address", server.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("example server stopped unexpectedly", "error", err)
 			os.Exit(1)
@@ -54,7 +54,7 @@ func main() {
 		os.Exit(1)
 	}
 	if err := app.Stop(shutdownCtx); err != nil {
-		logger.Error("failed to stop StellFlux Go", "error", err)
+		logger.Error("failed to stop Stellar", "error", err)
 		os.Exit(1)
 	}
 }

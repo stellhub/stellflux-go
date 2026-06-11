@@ -1,4 +1,4 @@
-package stellflux
+package stellar
 
 import (
 	"context"

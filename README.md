@@ -1,12 +1,12 @@
-# StellFlux Go
+# Stellar
 
-`stellflux-go` is the Go framework for the Stell middleware ecosystem. It provides a unified application foundation for services that need to integrate Stell standards for configuration, discovery, messaging, observability, governance, and platform operations.
+`stellar` is the Go framework for the Stell middleware ecosystem. It provides a unified application foundation for services that need to integrate Stell standards for configuration, discovery, messaging, observability, governance, and platform operations.
 
 It has the same positioning as [`stellhub/stellflux`](https://github.com/stellhub/stellflux), while following Go conventions: small packages, explicit composition, context propagation, standard library first, and predictable lifecycle management.
 
 ## Positioning
 
-StellFlux Go is not a middleware server and does not implement business logic. It is a framework layer for Go services that need a consistent way to adopt Stell middleware capabilities.
+Stellar is not a middleware server and does not implement business logic. It is a framework layer for Go services that need a consistent way to adopt Stell middleware capabilities.
 
 ## Core Responsibilities
 
@@ -43,7 +43,7 @@ StellFlux Go is not a middleware server and does not implement business logic. I
 Install the module:
 
 ```bash
-go get github.com/stellhub/stellflux-go
+go get github.com/stellhub/stellar
 ```
 
 Create an application:
@@ -55,17 +55,17 @@ import (
 	"context"
 	"log"
 
-	stellflux "github.com/stellhub/stellflux-go"
+	"github.com/stellhub/stellar"
 )
 
 func main() {
-	app := stellflux.New(stellflux.Config{
+	app := stellar.New(stellar.Config{
 		AppName:     "example-service",
-		Environment: stellflux.EnvDev,
+		Environment: stellar.EnvDev,
 		Zone:        "local",
 	})
 
-	app.Use(stellflux.StandardModules()...)
+	app.Use(stellar.StandardModules()...)
 
 	if err := app.Start(context.Background()); err != nil {
 		log.Fatal(err)
@@ -77,14 +77,14 @@ func main() {
 Run the included example:
 
 ```bash
-go run ./cmd/stellflux-go-example
+go run ./cmd/stellar-example
 ```
 
 Then open:
 
 ```text
 GET http://localhost:8080/health
-GET http://localhost:8080/stellflux/status
+GET http://localhost:8080/stellar/status
 ```
 
 ## Configuration Model
@@ -100,9 +100,9 @@ GET http://localhost:8080/stellflux/status
 
 ```mermaid
 flowchart LR
-    App[Go Service] --> Flux[StellFlux Go]
-    Flux --> Lifecycle[Module Lifecycle]
-    Flux --> Runtime[Runtime Metadata]
+    App[Go Service] --> Stellar[Stellar]
+    Stellar --> Lifecycle[Module Lifecycle]
+    Stellar --> Runtime[Runtime Metadata]
     Lifecycle --> Middleware[Stell Middleware Standards]
     Runtime --> ControlPlane[StellCloud / Control Plane]
 ```
@@ -123,7 +123,7 @@ gofmt -w .
 
 ## Compatibility
 
-StellFlux Go follows semantic versioning once the public API stabilizes:
+Stellar follows semantic versioning once the public API stabilizes:
 
 - `MAJOR`: incompatible API or runtime behavior changes.
 - `MINOR`: backward-compatible modules, standards, or APIs.

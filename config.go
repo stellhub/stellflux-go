@@ -1,4 +1,4 @@
-package stellflux
+package stellar
 
 const (
 	EnvDev  Environment = "dev"

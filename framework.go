@@ -1,4 +1,4 @@
-package stellflux
+package stellar
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-var ErrAppNameRequired = errors.New("stellflux: app name is required")
+var ErrAppNameRequired = errors.New("stellar: app name is required")
 
 type Runtime interface {
 	Config() Config
@@ -77,7 +77,7 @@ func (a *App) Start(ctx context.Context) error {
 		if err := module.Start(ctx, runtime); err != nil {
 			return err
 		}
-		a.logger.Info("stellflux module started", "module", module.Name())
+		a.logger.Info("stellar module started", "module", module.Name())
 	}
 
 	a.started = true
@@ -97,7 +97,7 @@ func (a *App) Stop(ctx context.Context) error {
 		if err := module.Stop(ctx); err != nil {
 			return err
 		}
-		a.logger.Info("stellflux module stopped", "module", module.Name())
+		a.logger.Info("stellar module stopped", "module", module.Name())
 	}
 
 	a.started = false

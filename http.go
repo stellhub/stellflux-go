@@ -1,4 +1,4 @@
-package stellflux
+package stellar
 
 import (
 	"encoding/json"
@@ -16,21 +16,21 @@ type StatusResponse struct {
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", a.onlyMethod(http.MethodGet, a.handleHealth))
-	mux.HandleFunc("/stellflux/status", a.onlyMethod(http.MethodGet, a.handleStatus))
+	mux.HandleFunc("/stellar/status", a.onlyMethod(http.MethodGet, a.handleStatus))
 	return mux
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":    "ok",
-		"framework": "stellflux-go",
+		"framework": "stellar",
 	})
 }
 
 func (a *App) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, StatusResponse{
 		Service:     a.config.AppName,
-		Framework:   "stellflux-go",
+		Framework:   "stellar",
 		Environment: string(a.config.Environment),
 		Zone:        a.config.Zone,
 		Modules:     a.Modules(),

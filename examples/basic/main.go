@@ -4,16 +4,16 @@ import (
 	"context"
 	"log"
 
-	stellflux "github.com/stellhub/stellflux-go"
+	"github.com/stellhub/stellar"
 )
 
 func main() {
-	app := stellflux.New(stellflux.Config{
+	app := stellar.New(stellar.Config{
 		AppName:     "basic-example",
-		Environment: stellflux.EnvDev,
+		Environment: stellar.EnvDev,
 		Zone:        "local",
 	})
-	app.Use(stellflux.StandardModules()...)
+	app.Use(stellar.StandardModules()...)
 
 	if err := app.Start(context.Background()); err != nil {
 		log.Fatal(err)

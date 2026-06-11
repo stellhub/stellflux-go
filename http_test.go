@@ -1,4 +1,4 @@
-package stellflux
+package stellar
 
 import (
 	"encoding/json"
@@ -16,7 +16,7 @@ func TestStatusHandler(t *testing.T) {
 	app.Use(StandardModules()...)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/stellflux/status", nil)
+	request := httptest.NewRequest(http.MethodGet, "/stellar/status", nil)
 
 	app.Handler().ServeHTTP(recorder, request)
 
@@ -28,8 +28,8 @@ func TestStatusHandler(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if response.Framework != "stellflux-go" {
-		t.Fatalf("expected framework stellflux-go, got %q", response.Framework)
+	if response.Framework != "stellar" {
+		t.Fatalf("expected framework stellar, got %q", response.Framework)
 	}
 	if len(response.Modules) != 7 {
 		t.Fatalf("expected 7 modules, got %d", len(response.Modules))
