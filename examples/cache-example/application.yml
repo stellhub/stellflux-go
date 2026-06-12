@@ -1,0 +1,38 @@
+app:
+  name: stellar-cache-example
+  env: dev
+  zone: local
+
+http:
+  server:
+    enabled: true
+    port: 18084
+    adapter: gin
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+
+cache:
+  enabled: true
+  adapter: bigcache
+  ttl: 10m
+  clean_window: 1m
+  shards: 1024
+  hard_max_cache_size_mb: 64
+  size_bytes: 67108864
+  debug_api:
+    enabled: true
+    prefix: /cache
+  observability:
+    trace: true
+    metrics: true
+    logs: true
+
+opentelemetry:
+  log:
+    enabled: false
+    output: stdout
+  trace: false
+  metrics: false
+  trace_output: none

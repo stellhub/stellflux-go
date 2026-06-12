@@ -12,6 +12,7 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+	cacheclient "github.com/stellhub/stellar/clients/cache"
 	"github.com/stellhub/stellar/config"
 	apperrors "github.com/stellhub/stellar/errors"
 	stellarhttp "github.com/stellhub/stellar/transport/http"
@@ -34,6 +35,11 @@ type postgresqlDebugAPI struct {
 	prefix     string
 	tableMu    sync.Mutex
 	tableReady bool
+}
+
+type cacheDebugAPI struct {
+	app    *App
+	prefix string
 }
 
 type redisDebugItemRequest struct {
@@ -63,6 +69,16 @@ type postgresqlDebugItemRequest struct {
 type postgresqlDebugItemResponse struct {
 	ID    int64  `json:"id"`
 	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type cacheDebugItemRequest struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type cacheDebugItemResponse struct {
+	Key   string `json:"key"`
 	Value string `json:"value"`
 }
 
@@ -112,6 +128,22 @@ func registerPostgreSQLDebugAPI(app *App, cfg *config.PostgreSQLConfig) {
 	router.PUT(debugPath(api.prefix, "/items"), api.updateItem)
 	router.DELETE(debugPath(api.prefix, "/items"), api.deleteItem)
 	router.GET(debugPath(api.prefix, "/items/list"), api.listItems)
+}
+
+func registerCacheDebugAPI(app *App, cfg *config.CacheConfig) {
+	if app == nil || cfg == nil || !debugAPIEnabled(cfg.DebugAPI) {
+		return
+	}
+	api := cacheDebugAPI{
+		app:    app,
+		prefix: debugAPIPrefix(cfg.DebugAPI, "/cache"),
+	}
+	router := app.HTTP()
+	router.POST(debugPath(api.prefix, "/items"), api.setItem)
+	router.GET(debugPath(api.prefix, "/items"), api.getItem)
+	router.PUT(debugPath(api.prefix, "/items"), api.setItem)
+	router.DELETE(debugPath(api.prefix, "/items"), api.deleteItem)
+	router.GET(debugPath(api.prefix, "/stats"), api.stats)
 }
 
 func (api redisDebugAPI) setItem(ctx context.Context, request *stellarhttp.Request) (*stellarhttp.Response, error) {
@@ -227,6 +259,96 @@ func (api redisDebugAPI) redisClient() (*goredis.Client, error) {
 		return nil, apperrors.New(apperrors.CodeInternal, "redis client is not configured", stdhttp.StatusInternalServerError)
 	}
 	return client, nil
+}
+
+func (api cacheDebugAPI) setItem(ctx context.Context, request *stellarhttp.Request) (*stellarhttp.Response, error) {
+	store, err := api.cache()
+	if err != nil {
+		return nil, err
+	}
+
+	var body cacheDebugItemRequest
+	if err := decodeDebugJSON(request, &body); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(body.Key) == "" {
+		return nil, apperrors.New(apperrors.CodeInvalidArgument, "cache key is required", stdhttp.StatusBadRequest)
+	}
+	if err := store.SetString(ctx, body.Key, body.Value); err != nil {
+		return nil, err
+	}
+
+	status := stdhttp.StatusOK
+	if request.Method == stdhttp.MethodPost {
+		status = stdhttp.StatusCreated
+	}
+	return stellarhttp.JSON(status, cacheDebugItemResponse{
+		Key:   body.Key,
+		Value: body.Value,
+	}), nil
+}
+
+func (api cacheDebugAPI) getItem(ctx context.Context, request *stellarhttp.Request) (*stellarhttp.Response, error) {
+	store, err := api.cache()
+	if err != nil {
+		return nil, err
+	}
+	key := request.Query.Get("key")
+	if strings.TrimSpace(key) == "" {
+		return nil, apperrors.New(apperrors.CodeInvalidArgument, "cache key is required", stdhttp.StatusBadRequest)
+	}
+
+	value, ok, err := store.GetString(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, apperrors.New(apperrors.CodeNotFound, "cache key not found", stdhttp.StatusNotFound)
+	}
+	return stellarhttp.JSON(stdhttp.StatusOK, cacheDebugItemResponse{
+		Key:   key,
+		Value: value,
+	}), nil
+}
+
+func (api cacheDebugAPI) deleteItem(ctx context.Context, request *stellarhttp.Request) (*stellarhttp.Response, error) {
+	store, err := api.cache()
+	if err != nil {
+		return nil, err
+	}
+	key := request.Query.Get("key")
+	if strings.TrimSpace(key) == "" {
+		return nil, apperrors.New(apperrors.CodeInvalidArgument, "cache key is required", stdhttp.StatusBadRequest)
+	}
+
+	deleted, err := store.Delete(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return stellarhttp.JSON(stdhttp.StatusOK, map[string]any{
+		"key":     key,
+		"deleted": deleted,
+	}), nil
+}
+
+func (api cacheDebugAPI) stats(context.Context, *stellarhttp.Request) (*stellarhttp.Response, error) {
+	store, err := api.cache()
+	if err != nil {
+		return nil, err
+	}
+	return stellarhttp.JSON(stdhttp.StatusOK, map[string]any{
+		"adapter":  store.AdapterName(),
+		"entries":  store.Len(),
+		"capacity": store.Capacity(),
+	}), nil
+}
+
+func (api cacheDebugAPI) cache() (*cacheclient.Cache, error) {
+	store, ok := api.app.Cache()
+	if !ok || store == nil {
+		return nil, apperrors.New(apperrors.CodeInternal, "cache is not configured", stdhttp.StatusInternalServerError)
+	}
+	return store, nil
 }
 
 func (api *mysqlDebugAPI) createItem(ctx context.Context, request *stellarhttp.Request) (*stellarhttp.Response, error) {

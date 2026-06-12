@@ -9,6 +9,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stellhub/stellar/boot"
+	cacheclient "github.com/stellhub/stellar/clients/cache"
 	mysqlclient "github.com/stellhub/stellar/clients/mysql"
 	postgresqlclient "github.com/stellhub/stellar/clients/postgresql"
 	redisclient "github.com/stellhub/stellar/clients/redis"
@@ -53,6 +54,8 @@ type MySQLConfig = config.MySQLConfig
 
 type PostgreSQLConfig = config.PostgreSQLConfig
 
+type CacheConfig = config.CacheConfig
+
 type DebugAPIConfig = config.DebugAPIConfig
 
 type RedisClient = goredis.Client
@@ -60,6 +63,10 @@ type RedisClient = goredis.Client
 type MySQLDB = mysqlclient.DB
 
 type PostgreSQLDB = postgresqlclient.DB
+
+type Cache = cacheclient.Cache
+
+type CacheAdapter = cacheclient.Adapter
 
 type Runtime = boot.Runtime
 
@@ -118,6 +125,9 @@ const (
 	RedisClientName  = redisclient.DefaultClientName
 	MySQLDBName      = mysqlclient.DefaultDBName
 	PostgreSQLDBName = postgresqlclient.DefaultDBName
+	CacheName        = cacheclient.DefaultName
+	CacheBigCache    = cacheclient.AdapterBigCache
+	CacheFreeCache   = cacheclient.AdapterFreeCache
 )
 
 func New(cfg Config, options ...Option) *App {
@@ -152,6 +162,10 @@ func GetAs[T any](registry *Registry, name string) (T, bool) {
 
 func NewObservability(options ...ObservabilityOption) *ObservabilityProvider {
 	return observability.New(options...)
+}
+
+func NewCache(adapter CacheAdapter, provider *ObservabilityProvider) (*Cache, error) {
+	return cacheclient.New(adapter, provider)
 }
 
 func WithObservability(provider *ObservabilityProvider) Option {

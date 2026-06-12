@@ -41,13 +41,22 @@ type Provider struct {
 	postgresqlClientTrace   bool
 	postgresqlClientMetrics bool
 	postgresqlClientLogs    bool
+	cacheClientTrace        bool
+	cacheClientMetrics      bool
+	cacheClientLogs         bool
 
 	httpServerRequests     metric.Int64Counter
 	httpServerDuration     metric.Float64Histogram
+	cacheClientRequests    metric.Int64Counter
+	cacheClientDuration    metric.Float64Histogram
+	cacheClientValueSize   metric.Int64Histogram
+	cacheClientEntries     metric.Int64Gauge
+	cacheClientCapacity    metric.Int64Gauge
 	httpClientLogger       log.Logger
 	redisClientLogger      log.Logger
 	mysqlClientLogger      log.Logger
 	postgresqlClientLogger log.Logger
+	cacheClientLogger      log.Logger
 	metricsHandler         http.Handler
 	shutdowns              []func(context.Context) error
 }
@@ -75,6 +84,9 @@ type providerConfig struct {
 	postgresqlClientTrace   *bool
 	postgresqlClientMetrics *bool
 	postgresqlClientLogs    *bool
+	cacheClientTrace        *bool
+	cacheClientMetrics      *bool
+	cacheClientLogs         *bool
 }
 
 func New(options ...Option) *Provider {
@@ -114,6 +126,9 @@ func New(options ...Option) *Provider {
 		postgresqlClientTrace:   boolValue(cfg.postgresqlClientTrace, true),
 		postgresqlClientMetrics: boolValue(cfg.postgresqlClientMetrics, true),
 		postgresqlClientLogs:    boolValue(cfg.postgresqlClientLogs, true),
+		cacheClientTrace:        boolValue(cfg.cacheClientTrace, true),
+		cacheClientMetrics:      boolValue(cfg.cacheClientMetrics, true),
+		cacheClientLogs:         boolValue(cfg.cacheClientLogs, true),
 		httpClientLogger: cfg.loggerProvider.Logger(
 			ScopeName + "/http-client",
 		),
@@ -126,9 +141,13 @@ func New(options ...Option) *Provider {
 		postgresqlClientLogger: cfg.loggerProvider.Logger(
 			ScopeName + "/postgresql-client",
 		),
+		cacheClientLogger: cfg.loggerProvider.Logger(
+			ScopeName + "/cache-client",
+		),
 		propagator: cfg.propagator,
 	}
 	provider.initHTTPMetrics()
+	provider.initCacheMetrics()
 	return provider
 }
 
@@ -207,6 +226,14 @@ func WithPostgreSQLClientObservability(trace *bool, metrics *bool, logs *bool) O
 		cfg.postgresqlClientTrace = trace
 		cfg.postgresqlClientMetrics = metrics
 		cfg.postgresqlClientLogs = logs
+	}
+}
+
+func WithCacheClientObservability(trace *bool, metrics *bool, logs *bool) Option {
+	return func(cfg *providerConfig) {
+		cfg.cacheClientTrace = trace
+		cfg.cacheClientMetrics = metrics
+		cfg.cacheClientLogs = logs
 	}
 }
 
@@ -327,6 +354,27 @@ func (p *Provider) PostgreSQLClientLogsEnabled() bool {
 		return true
 	}
 	return p.postgresqlClientLogs
+}
+
+func (p *Provider) CacheClientTraceEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.cacheClientTrace
+}
+
+func (p *Provider) CacheClientMetricsEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.cacheClientMetrics
+}
+
+func (p *Provider) CacheClientLogsEnabled() bool {
+	if p == nil {
+		return true
+	}
+	return p.cacheClientLogs
 }
 
 func (p *Provider) MetricsHandler() http.Handler {

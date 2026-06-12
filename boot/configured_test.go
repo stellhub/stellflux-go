@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stellhub/stellar/config"
@@ -92,6 +93,10 @@ func TestNewConfiguredRegistersRedisAndMySQLClients(t *testing.T) {
 		PostgreSQL: &config.PostgreSQLConfig{
 			DSN: "postgres://user:pass@localhost:5432/app?sslmode=disable",
 		},
+		Cache: &config.CacheConfig{
+			Adapter: "freecache",
+			TTL:     "1m",
+		},
 	}.Normalize()
 
 	app, err := NewConfigured(context.Background(), cfg)
@@ -110,6 +115,10 @@ func TestNewConfiguredRegistersRedisAndMySQLClients(t *testing.T) {
 	if !ok || postgresqlDB == nil {
 		t.Fatalf("expected postgresql db to be registered")
 	}
+	cache, ok := app.Cache()
+	if !ok || cache == nil {
+		t.Fatalf("expected cache to be registered")
+	}
 	if err := redisClient.Close(); err != nil {
 		t.Fatalf("close redis client: %v", err)
 	}
@@ -118,6 +127,9 @@ func TestNewConfiguredRegistersRedisAndMySQLClients(t *testing.T) {
 	}
 	if err := postgresqlDB.Close(); err != nil {
 		t.Fatalf("close postgresql db: %v", err)
+	}
+	if err := cache.Close(); err != nil {
+		t.Fatalf("close cache: %v", err)
 	}
 }
 
@@ -141,6 +153,11 @@ func TestNewConfiguredRegistersDataDebugAPIsFromConfig(t *testing.T) {
 			DSN:      "postgres://user:pass@localhost:5432/app?sslmode=disable",
 			DebugAPI: &config.DebugAPIConfig{Enabled: &enabled},
 		},
+		Cache: &config.CacheConfig{
+			Adapter:  "freecache",
+			TTL:      "1m",
+			DebugAPI: &config.DebugAPIConfig{Enabled: &enabled},
+		},
 	}.Normalize()
 
 	app, err := NewConfigured(context.Background(), cfg)
@@ -157,6 +174,9 @@ func TestNewConfiguredRegistersDataDebugAPIsFromConfig(t *testing.T) {
 		if postgresqlDB, ok := app.PostgreSQLDB(); ok {
 			_ = postgresqlDB.Close()
 		}
+		if cache, ok := app.Cache(); ok {
+			_ = cache.Close()
+		}
 	}()
 
 	routes := app.HTTP().Routes()
@@ -166,6 +186,66 @@ func TestNewConfiguredRegistersDataDebugAPIsFromConfig(t *testing.T) {
 	assertRouteExists(t, routes, http.MethodGet, "/mysql/items")
 	assertRouteExists(t, routes, http.MethodPost, "/postgresql/items")
 	assertRouteExists(t, routes, http.MethodGet, "/postgresql/items")
+	assertRouteExists(t, routes, http.MethodPost, "/cache/items")
+	assertRouteExists(t, routes, http.MethodGet, "/cache/items")
+}
+
+func TestCacheDebugAPICRUD(t *testing.T) {
+	enabled := true
+	cfg := config.Config{
+		AppName:     "configured-service",
+		Environment: config.EnvDev,
+		HTTP: config.HTTPConfig{
+			Server: &config.HTTPServerConfig{Port: 18080},
+		},
+		Cache: &config.CacheConfig{
+			Adapter:  "bigcache",
+			TTL:      "1m",
+			DebugAPI: &config.DebugAPIConfig{Enabled: &enabled},
+		},
+	}.Normalize()
+
+	app, err := NewConfigured(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("new configured app: %v", err)
+	}
+	defer func() {
+		if cache, ok := app.Cache(); ok {
+			_ = cache.Close()
+		}
+	}()
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/cache/items", strings.NewReader(`{"key":"demo","value":"hello"}`))
+	request.Header.Set("Content-Type", "application/json")
+	app.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected create status %d, got %d body %s", http.StatusCreated, recorder.Code, recorder.Body.String())
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/cache/items?key=demo", nil)
+	app.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected get status %d, got %d body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"value":"hello"`) {
+		t.Fatalf("expected cached value in response, got %s", recorder.Body.String())
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodDelete, "/cache/items?key=demo", nil)
+	app.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected delete status %d, got %d body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/cache/items?key=demo", nil)
+	app.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected missing status %d, got %d body %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
 }
 
 func TestPortFromAddr(t *testing.T) {

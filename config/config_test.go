@@ -106,6 +106,19 @@ postgresql:
     trace: true
     metrics: true
     logs: true
+cache:
+  enabled: true
+  adapter: freecache
+  ttl: 5m
+  clean_window: 30s
+  size_bytes: 1048576
+  debug_api:
+    enabled: true
+    prefix: /cache
+  observability:
+    trace: false
+    metrics: true
+    logs: false
 opentelemetry:
   log: true
   trace: true
@@ -197,6 +210,18 @@ opentelemetry:
 	}
 	if cfg.PostgreSQL.Observability.Trace == nil || !*cfg.PostgreSQL.Observability.Trace {
 		t.Fatalf("expected postgresql trace observability")
+	}
+	if cfg.Cache == nil || cfg.Cache.Adapter != "freecache" || cfg.Cache.TTL != "5m" || cfg.Cache.SizeBytes != 1048576 {
+		t.Fatalf("unexpected cache config %#v", cfg.Cache)
+	}
+	if cfg.Cache.DebugAPI == nil || cfg.Cache.DebugAPI.Enabled == nil || !*cfg.Cache.DebugAPI.Enabled || cfg.Cache.DebugAPI.Prefix != "/cache" {
+		t.Fatalf("unexpected cache debug api config %#v", cfg.Cache.DebugAPI)
+	}
+	if cfg.Cache.Observability.Metrics == nil || !*cfg.Cache.Observability.Metrics {
+		t.Fatalf("expected cache metrics observability")
+	}
+	if cfg.Cache.Observability.Logs == nil || *cfg.Cache.Observability.Logs {
+		t.Fatalf("expected cache logs observability disabled")
 	}
 	if cfg.Starter.OpenTelemetry == nil || !cfg.Starter.OpenTelemetry.Log.Enabled {
 		t.Fatalf("expected opentelemetry log starter")

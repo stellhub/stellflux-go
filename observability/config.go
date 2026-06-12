@@ -69,6 +69,10 @@ func NewFromConfig(ctx context.Context, cfg stellarconfig.Config) (*Provider, er
 		signals := cfg.PostgreSQL.Observability
 		providerCfg = append(providerCfg, WithPostgreSQLClientObservability(signals.Trace, signals.Metrics, signals.Logs))
 	}
+	if cfg.Cache != nil {
+		signals := cfg.Cache.Observability
+		providerCfg = append(providerCfg, WithCacheClientObservability(signals.Trace, signals.Metrics, signals.Logs))
+	}
 	var shutdowns []func(context.Context) error
 	var metricsHandler http.Handler
 

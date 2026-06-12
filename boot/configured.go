@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	cacheclient "github.com/stellhub/stellar/clients/cache"
 	mysqlclient "github.com/stellhub/stellar/clients/mysql"
 	postgresqlclient "github.com/stellhub/stellar/clients/postgresql"
 	redisclient "github.com/stellhub/stellar/clients/redis"
@@ -57,6 +58,9 @@ func NewConfigured(ctx context.Context, cfg config.Config, options ...Option) (*
 		return nil, err
 	}
 	if err := configurePostgreSQLStarter(ctx, app, cfg); err != nil {
+		return nil, err
+	}
+	if err := configureCacheStarter(ctx, app, cfg); err != nil {
 		return nil, err
 	}
 	return app, nil
@@ -177,6 +181,29 @@ func configurePostgreSQLStarter(ctx context.Context, app *App, cfg config.Config
 		Name: postgresqlclient.DefaultDBName,
 		OnStop: func(context.Context) error {
 			return db.Close()
+		},
+	})
+	return nil
+}
+
+func configureCacheStarter(ctx context.Context, app *App, cfg config.Config) error {
+	if cfg.Cache == nil {
+		return nil
+	}
+	if cfg.Cache.Enabled != nil && !*cfg.Cache.Enabled {
+		return nil
+	}
+
+	cache, err := cacheclient.NewFromConfig(ctx, cfg.Cache, app.observability)
+	if err != nil {
+		return fmt.Errorf("configure cache client: %w", err)
+	}
+	app.registry.Set(cacheclient.DefaultName, cache)
+	registerCacheDebugAPI(app, cfg.Cache)
+	app.lifecycle.Append(lifecycle.Hook{
+		Name: cacheclient.DefaultName,
+		OnStop: func(context.Context) error {
+			return cache.Close()
 		},
 	})
 	return nil

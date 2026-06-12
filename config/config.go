@@ -130,6 +130,22 @@ type PostgreSQLConfig struct {
 	DebugAPI        *DebugAPIConfig           `yaml:"debug_api"`
 }
 
+type CacheConfig struct {
+	Enabled            *bool                     `yaml:"enabled"`
+	Adapter            string                    `yaml:"adapter"`
+	TTL                string                    `yaml:"ttl"`
+	CleanWindow        string                    `yaml:"clean_window"`
+	Shards             int                       `yaml:"shards"`
+	MaxEntriesInWindow int                       `yaml:"max_entries_in_window"`
+	MaxEntrySize       int                       `yaml:"max_entry_size"`
+	HardMaxCacheSizeMB int                       `yaml:"hard_max_cache_size_mb"`
+	SizeBytes          int                       `yaml:"size_bytes"`
+	StatsEnabled       *bool                     `yaml:"stats_enabled"`
+	Verbose            bool                      `yaml:"verbose"`
+	Observability      ObservabilitySignalConfig `yaml:"observability"`
+	DebugAPI           *DebugAPIConfig           `yaml:"debug_api"`
+}
+
 type DebugAPIConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Prefix  string `yaml:"prefix"`
@@ -146,6 +162,7 @@ type Config struct {
 	Redis       *RedisConfig
 	MySQL       *MySQLConfig
 	PostgreSQL  *PostgreSQLConfig
+	Cache       *CacheConfig
 	Starter     StarterConfig
 	Metadata    map[string]string
 }
@@ -211,6 +228,7 @@ type fileConfig struct {
 	Redis         *RedisConfig                `yaml:"redis"`
 	MySQL         *MySQLConfig                `yaml:"mysql"`
 	PostgreSQL    *PostgreSQLConfig           `yaml:"postgresql"`
+	Cache         *CacheConfig                `yaml:"cache"`
 	OpenTelemetry *OpenTelemetryStarterConfig `yaml:"opentelemetry"`
 }
 
@@ -267,6 +285,22 @@ func (c Config) Normalize() Config {
 			postgresql.Driver = "pgx"
 		}
 		c.PostgreSQL = &postgresql
+	}
+	if c.Cache != nil {
+		cache := *c.Cache
+		if strings.TrimSpace(cache.Adapter) == "" {
+			cache.Adapter = "bigcache"
+		}
+		if strings.TrimSpace(cache.TTL) == "" {
+			cache.TTL = "10m"
+		}
+		if strings.TrimSpace(cache.CleanWindow) == "" {
+			cache.CleanWindow = "1m"
+		}
+		if cache.SizeBytes <= 0 {
+			cache.SizeBytes = 64 * 1024 * 1024
+		}
+		c.Cache = &cache
 	}
 	if c.Metadata == nil {
 		c.Metadata = map[string]string{}
@@ -440,6 +474,7 @@ func LoadFile(path string) (Config, error) {
 		Redis:       raw.Redis,
 		MySQL:       raw.MySQL,
 		PostgreSQL:  raw.PostgreSQL,
+		Cache:       raw.Cache,
 		Starter: StarterConfig{
 			HTTP:          raw.HTTP,
 			GRPC:          raw.GRPC,

@@ -4,7 +4,9 @@ go 1.25.9
 
 require (
 	github.com/XSAM/otelsql v0.42.0
+	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/cloudwego/hertz v0.10.5
+	github.com/coocood/freecache v1.2.7
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-sql-driver/mysql v1.10.0

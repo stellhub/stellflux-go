@@ -163,6 +163,21 @@ postgresql:
     trace: true
     metrics: true
     logs: true
+cache:
+  enabled: true
+  adapter: bigcache
+  ttl: 10m
+  clean_window: 1m
+  shards: 1024
+  hard_max_cache_size_mb: 64
+  size_bytes: 67108864
+  debug_api:
+    enabled: true
+    prefix: /cache
+  observability:
+    trace: true
+    metrics: true
+    logs: true
 opentelemetry:
   trace: true
   metrics: true
@@ -271,9 +286,10 @@ grpc:
 
 ## Data Clients
 
-Stellar can create standard Redis, MySQL, and PostgreSQL clients from `application.yml`.
+Stellar can create standard Redis, MySQL, PostgreSQL, and local cache clients from `application.yml`.
 
 Redis uses `github.com/redis/go-redis/v9`; MySQL and PostgreSQL use the standard `database/sql` API with `github.com/go-sql-driver/mysql` and `github.com/jackc/pgx/v5/stdlib`.
+Local cache is exposed through Stellar's cache adapter abstraction. BigCache is the default implementation; FreeCache can be selected with `adapter: freecache`.
 
 ```yaml
 redis:
@@ -320,6 +336,22 @@ postgresql:
     trace: true
     metrics: true
     logs: true
+
+cache:
+  enabled: true
+  adapter: bigcache
+  ttl: 10m
+  clean_window: 1m
+  shards: 1024
+  hard_max_cache_size_mb: 64
+  size_bytes: 67108864
+  debug_api:
+    enabled: true
+    prefix: /cache
+  observability:
+    trace: true
+    metrics: true
+    logs: true
 ```
 
 When using the programmatic API:
@@ -328,6 +360,27 @@ When using the programmatic API:
 redisClient, ok := app.RedisClient()
 mysqlDB, ok := app.MySQLDB()
 postgresqlDB, ok := app.PostgreSQLDB()
+localCache, ok := app.Cache()
+```
+
+Switch the local cache implementation without changing application code:
+
+```yaml
+cache:
+  enabled: true
+  adapter: freecache
+  ttl: 10m
+  size_bytes: 67108864
+  observability:
+    metrics: true
+```
+
+Cache operations use the same framework abstraction:
+
+```go
+_ = localCache.SetString(ctx, "demo", "hello")
+value, ok, err := localCache.GetString(ctx, "demo")
+deleted, err := localCache.Delete(ctx, "demo")
 ```
 
 Run the standalone data client examples:
@@ -336,15 +389,16 @@ Run the standalone data client examples:
 go run ./examples/redis-example
 go run ./examples/mysql-example
 go run ./examples/postgresql-example
+go run ./examples/cache-example
 ```
 
-Both examples use only:
+These examples use only:
 
 ```go
 stellar.Start()
 ```
 
-Redis/MySQL/PostgreSQL clients and debug APIs are enabled by `application.yml`, not by passing explicit starters in `main`.
+Redis/MySQL/PostgreSQL/cache clients and their debug APIs are enabled by `application.yml`, not by passing explicit starters in `main`.
 
 Redis example API:
 
@@ -406,9 +460,28 @@ PostgreSQL create/update body:
 }
 ```
 
+Cache example API:
+
+```text
+POST   http://localhost:18084/cache/items
+GET    http://localhost:18084/cache/items?key=demo
+PUT    http://localhost:18084/cache/items
+DELETE http://localhost:18084/cache/items?key=demo
+GET    http://localhost:18084/cache/stats
+```
+
+Cache create/update body:
+
+```json
+{
+  "key": "demo",
+  "value": "hello"
+}
+```
+
 ## OpenTelemetry
 
-Stellar instruments HTTP server, gRPC server, HTTP client, gRPC client, Redis client, MySQL client, and PostgreSQL client with OpenTelemetry trace, logs, and metrics.
+Stellar instruments HTTP server, gRPC server, HTTP client, gRPC client, Redis client, MySQL client, PostgreSQL client, and local cache client with OpenTelemetry trace, logs, and metrics.
 
 Stellar reads `application.yml` or `application.yaml` from the directory that contains `main.go`, then from the current working directory.
 
