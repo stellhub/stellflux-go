@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing semver tag to release, for example v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify module
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::Go files must be formatted with gofmt"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check module files
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - verify
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve release tag
+        id: release_tag
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "::error::Release tag must use semver format like v0.1.0"
+              exit 1
+              ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release $TAG already exists."
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
