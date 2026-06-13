@@ -4,15 +4,20 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	stellarconfig "github.com/stellhub/stellar/config"
+	"github.com/stellhub/stellar/discovery"
 	"github.com/stellhub/stellar/interceptor"
 	"github.com/stellhub/stellar/observability"
 	stellargrpc "github.com/stellhub/stellar/transport/grpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	grpcresolver "google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/resolver/manual"
 )
 
 type ClientOption func(*clientConfig)
@@ -117,6 +122,18 @@ func NewNamedClientConnFromConfig(ctx context.Context, cfg *stellarconfig.GRPCCl
 	target, cfgOptions, err := clientOptionsFromConfig(cfg, named)
 	if err != nil {
 		return nil, "", err
+	}
+	if name != "" {
+		if discoveryCfg, discoveryTarget, ok, err := discovery.GRPCConfigForNamed(cfg, named, name); err != nil {
+			return nil, "", err
+		} else if ok {
+			discoveredTarget, discoveryOptions, err := discoveryDialOptions(ctx, discoveryCfg, discoveryTarget)
+			if err != nil {
+				return nil, "", err
+			}
+			target = discoveredTarget
+			cfgOptions = append(cfgOptions, discoveryOptions...)
+		}
 	}
 	if strings.TrimSpace(target) == "" {
 		return nil, "", fmt.Errorf("stellar: grpc client target is required")
@@ -277,6 +294,75 @@ func grpcClientInvocation(ctx context.Context, fullMethod string, conn *grpc.Cli
 		Headers:   headersFromOutgoingContext(ctx),
 		Raw:       conn,
 	}
+}
+
+var discoveryResolverID atomic.Uint64
+
+func discoveryDialOptions(ctx context.Context, cfg *stellarconfig.DiscoveryConfig, target discovery.Target) (string, []ClientOption, error) {
+	cached, err := discovery.NewCachedResolverFromConfig(ctx, cfg, target)
+	if err != nil {
+		return "", nil, err
+	}
+	endpoints, err := cached.Resolve(ctx, target)
+	if err != nil {
+		_ = cached.Close(context.Background())
+		return "", nil, err
+	}
+	scheme := fmt.Sprintf("stellar-discovery-%d", discoveryResolverID.Add(1))
+	builder := manual.NewBuilderWithScheme(scheme)
+	builder.InitialState(grpcResolverState(endpoints))
+
+	updateCtx, cancel := context.WithCancel(context.Background())
+	builder.CloseCallback = func() {
+		cancel()
+		_ = cached.Close(context.Background())
+	}
+	refreshInterval, err := discovery.RefreshInterval(cfg)
+	if err != nil {
+		cancel()
+		_ = cached.Close(context.Background())
+		return "", nil, err
+	}
+	go updateGRPCResolverLoop(updateCtx, cached, target, builder, refreshInterval)
+
+	serviceConfig := fmt.Sprintf(`{"loadBalancingConfig":[{"%s":{}}]}`, roundrobin.Name)
+	return builder.Scheme() + ":///" + target.Service, []ClientOption{
+		WithDialOption(
+			grpc.WithResolvers(builder),
+			grpc.WithDefaultServiceConfig(serviceConfig),
+		),
+	}, nil
+}
+
+func updateGRPCResolverLoop(ctx context.Context, cached *discovery.CachedResolver, target discovery.Target, builder *manual.Resolver, interval time.Duration) {
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			endpoints, err := cached.Resolve(ctx, target)
+			if err == nil {
+				builder.UpdateState(grpcResolverState(endpoints))
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func grpcResolverState(endpoints []discovery.Endpoint) grpcresolver.State {
+	addresses := make([]grpcresolver.Address, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		address := endpoint.Address()
+		if strings.TrimSpace(address) == "" {
+			continue
+		}
+		addresses = append(addresses, grpcresolver.Address{Addr: address})
+	}
+	return grpcresolver.State{Addresses: addresses}
 }
 
 func headersFromOutgoingContext(ctx context.Context) interceptor.Header {

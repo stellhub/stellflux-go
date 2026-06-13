@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	stdhttp "net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	stellarconfig "github.com/stellhub/stellar/config"
+	"github.com/stellhub/stellar/discovery"
 	"github.com/stellhub/stellar/interceptor"
 	"github.com/stellhub/stellar/observability"
 )
@@ -18,6 +21,8 @@ type clientConfig struct {
 	transport    stdhttp.RoundTripper
 	observer     *observability.Provider
 	interceptors *interceptor.Registry
+	discovery    *discovery.CachedResolver
+	picker       discovery.Picker
 	clientName   string
 	timeout      time.Duration
 	copyClient   bool
@@ -66,6 +71,15 @@ func WithClientName(name string) ClientOption {
 	}
 }
 
+func WithClientDiscovery(resolver *discovery.CachedResolver, picker discovery.Picker) ClientOption {
+	return func(cfg *clientConfig) {
+		if resolver != nil {
+			cfg.discovery = resolver
+			cfg.picker = picker
+		}
+	}
+}
+
 func NewClient(options ...ClientOption) *stdhttp.Client {
 	cfg := clientConfig{
 		base:     stdhttp.DefaultClient,
@@ -91,6 +105,13 @@ func NewClient(options ...ClientOption) *stdhttp.Client {
 	}
 	if baseTransport == nil {
 		baseTransport = stdhttp.DefaultTransport
+	}
+	if cfg.discovery != nil {
+		baseTransport = &discoveryRoundTripper{
+			base:     baseTransport,
+			resolver: cfg.discovery,
+			picker:   cfg.picker,
+		}
 	}
 	if cfg.interceptors != nil {
 		baseTransport = &interceptorRoundTripper{
@@ -134,6 +155,20 @@ func NewNamedClientFromConfig(cfg *stellarconfig.HTTPClientConfig, name string, 
 	}
 	if name != "" {
 		cfgOptions = append(cfgOptions, WithClientName(name))
+	}
+	if name != "" {
+		if discoveryCfg, target, ok, err := discovery.HTTPConfigForNamed(cfg, named, name); err != nil {
+			return nil, "", err
+		} else if ok {
+			resolver, err := discovery.NewCachedResolverFromConfig(context.Background(), discoveryCfg, target)
+			if err != nil {
+				return nil, "", err
+			}
+			cfgOptions = append(cfgOptions, WithClientDiscovery(resolver, discovery.NewPicker(discoveryCfg.LoadBalance)))
+			if strings.TrimSpace(named.BaseURL) == "" {
+				named.BaseURL = logicalHTTPBaseURL(target)
+			}
+		}
 	}
 	cfgOptions = append(cfgOptions, options...)
 	return NewClient(cfgOptions...), named.BaseURL, nil
@@ -191,6 +226,72 @@ func transportFromConfig(cfg *stellarconfig.HTTPClientConfig) (stdhttp.RoundTrip
 		transport.IdleConnTimeout = timeout
 	}
 	return transport, nil
+}
+
+type discoveryRoundTripper struct {
+	base     stdhttp.RoundTripper
+	resolver *discovery.CachedResolver
+	picker   discovery.Picker
+}
+
+func (t *discoveryRoundTripper) RoundTrip(req *stdhttp.Request) (*stdhttp.Response, error) {
+	base := t.base
+	if base == nil {
+		base = stdhttp.DefaultTransport
+	}
+	if t.resolver == nil {
+		return base.RoundTrip(req)
+	}
+	endpoint, err := t.resolver.Pick(req.Context(), t.picker)
+	if err != nil {
+		return nil, err
+	}
+	next := req.Clone(req.Context())
+	next.URL = cloneURL(req.URL)
+	rewriteHTTPURL(next.URL, endpoint)
+	next.Host = next.URL.Host
+	return base.RoundTrip(next)
+}
+
+func logicalHTTPBaseURL(target discovery.Target) string {
+	service := strings.TrimSpace(target.Service)
+	if service == "" {
+		service = "service"
+	}
+	return "http://" + service
+}
+
+func rewriteHTTPURL(value *url.URL, endpoint discovery.Endpoint) {
+	scheme := "http"
+	switch strings.ToLower(endpoint.Protocol) {
+	case "https":
+		scheme = "https"
+	}
+	value.Scheme = scheme
+	value.Host = endpoint.Address()
+	if endpoint.Path != "" && endpoint.Path != "/" {
+		value.Path = joinURLPath(endpoint.Path, value.Path)
+	}
+}
+
+func cloneURL(value *url.URL) *url.URL {
+	if value == nil {
+		return &url.URL{}
+	}
+	copied := *value
+	return &copied
+}
+
+func joinURLPath(prefix string, path string) string {
+	prefix = strings.TrimRight(prefix, "/")
+	path = strings.TrimLeft(path, "/")
+	if prefix == "" {
+		return "/" + path
+	}
+	if path == "" {
+		return prefix
+	}
+	return prefix + "/" + path
 }
 
 type interceptorRoundTripper struct {

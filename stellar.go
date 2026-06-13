@@ -14,6 +14,7 @@ import (
 	postgresqlclient "github.com/stellhub/stellar/clients/postgresql"
 	redisclient "github.com/stellhub/stellar/clients/redis"
 	"github.com/stellhub/stellar/config"
+	"github.com/stellhub/stellar/discovery"
 	"github.com/stellhub/stellar/governance"
 	"github.com/stellhub/stellar/interceptor"
 	"github.com/stellhub/stellar/lifecycle"
@@ -63,6 +64,8 @@ type RegistryConfig = config.RegistryConfig
 
 type RegistryServiceEndpointConfig = config.RegistryServiceEndpointConfig
 
+type DiscoveryConfig = config.DiscoveryConfig
+
 type DebugAPIConfig = config.DebugAPIConfig
 
 type RedisClient = goredis.Client
@@ -88,6 +91,16 @@ type ServiceQuery = serviceregistry.Query
 type ServiceRegistryEvent = serviceregistry.Event
 
 type ServiceRegistryWatcher = serviceregistry.Watcher
+
+type DiscoveryResolver = discovery.Resolver
+
+type DiscoveryCachedResolver = discovery.CachedResolver
+
+type DiscoveryTarget = discovery.Target
+
+type DiscoveryEndpoint = discovery.Endpoint
+
+type DiscoveryPicker = discovery.Picker
 
 type Runtime = boot.Runtime
 
@@ -199,17 +212,20 @@ const (
 var ErrAppNameRequired = boot.ErrAppNameRequired
 
 const (
-	RedisClientName  = redisclient.DefaultClientName
-	MySQLDBName      = mysqlclient.DefaultDBName
-	PostgreSQLDBName = postgresqlclient.DefaultDBName
-	CacheName        = cacheclient.DefaultName
-	CacheBigCache    = cacheclient.AdapterBigCache
-	CacheFreeCache   = cacheclient.AdapterFreeCache
-	RegistryName     = serviceregistry.DefaultName
-	RegistryEtcd     = serviceregistry.AdapterEtcd
-	RegistryConsul   = serviceregistry.AdapterConsul
-	RegistryNacos    = serviceregistry.AdapterNacos
-	RegistryStellMap = serviceregistry.AdapterStellMap
+	RedisClientName             = redisclient.DefaultClientName
+	MySQLDBName                 = mysqlclient.DefaultDBName
+	PostgreSQLDBName            = postgresqlclient.DefaultDBName
+	CacheName                   = cacheclient.DefaultName
+	CacheBigCache               = cacheclient.AdapterBigCache
+	CacheFreeCache              = cacheclient.AdapterFreeCache
+	RegistryName                = serviceregistry.DefaultName
+	RegistryEtcd                = serviceregistry.AdapterEtcd
+	RegistryConsul              = serviceregistry.AdapterConsul
+	RegistryNacos               = serviceregistry.AdapterNacos
+	RegistryStellMap            = serviceregistry.AdapterStellMap
+	DiscoveryRoundRobin         = discovery.LoadBalanceRoundRobin
+	DiscoveryRandom             = discovery.LoadBalanceRandom
+	DiscoveryWeightedRoundRobin = discovery.LoadBalanceWeightedRound
 )
 
 func New(cfg Config, options ...Option) *App {
@@ -275,6 +291,10 @@ func NewCache(adapter CacheAdapter, provider *ObservabilityProvider) (*Cache, er
 
 func NewServiceRegistry(adapter ServiceRegistryAdapter) (*ServiceRegistry, error) {
 	return serviceregistry.New(adapter)
+}
+
+func NewDiscoveryPicker(policy string) DiscoveryPicker {
+	return discovery.NewPicker(policy)
 }
 
 func WithObservability(provider *ObservabilityProvider) Option {

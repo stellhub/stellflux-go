@@ -252,11 +252,23 @@ go run ./examples/registry/register
 
 需要先在 `localhost:18090` 启动 StellMap，或者将 `examples/registry/register/application.yml` 中的 `registry.adapter` 和 `registry.endpoints` 切换为你的 Etcd、Consul 或 Nacos 实例。
 
+运行 discovery 示例：
+
+```bash
+go run ./examples/discovery/simple
+```
+
+然后触发一次客户端侧服务发现调用：
+
+```text
+GET http://localhost:18092/api/v1/discovery/call
+```
+
 ## 传输适配器
 
 Stellar 将 HTTP 和 RPC 隔离在适配器接口之后。
 
-HTTP/gRPC server 与 client 的拦截器顺序规范见 [Interceptor.md](Interceptor.md)。
+HTTP/gRPC server 与 client 的拦截器顺序规范见 [docs/Interceptor.md](docs/Interceptor.md)。
 
 | 层 | 默认实现 | 可选实现 |
 | --- | --- | --- |
@@ -339,6 +351,8 @@ grpc:
 
 Stellar 将服务发现隔离在 registry adapter 抽象之后。默认实现是 StellMap，也可以在 `application.yml` 中选择 Etcd、Consul 或 Nacos，不需要修改业务代码。
 
+服务注册与服务发现架构设计见 [docs/registry-discovery-architecture.md](docs/registry-discovery-architecture.md)。
+
 如果只配置了 `registry.enabled`、`adapter` 和连接信息，Stellar 会创建注册中心客户端，并通过 `app.ServiceRegistry()` 暴露。如果同时配置了 `service`、`instance_id` 和 `service_endpoints`，Stellar 会在服务端 transport 启动后自动注册当前实例，并在应用停止时注销。
 
 ```yaml
@@ -383,6 +397,34 @@ instances, err := registry.Discover(ctx, stellar.ServiceQuery{
 	Service:   "user-service",
 })
 ```
+
+正常出站调用建议使用客户端侧 discovery。HTTP 和 gRPC named client 可以通过配置的注册中心后端发现 endpoint，并维护本地缓存：
+
+```yaml
+http:
+  client:
+    clients:
+      user-service:
+        discovery:
+          enabled: true
+          service: user-service
+          protocol: http
+          endpoint_name: http
+          load_balance: round_robin
+
+grpc:
+  client:
+    clients:
+      user-service:
+        discovery:
+          enabled: true
+          service: user-service
+          protocol: grpc
+          endpoint_name: grpc
+          load_balance: round_robin
+```
+
+如果 named client 没有配置 `discovery`，也没有配置静态 `base_url` 或 `target`，Stellar 会先继承顶层 `discovery` 配置，再回退到全局 `registry` 的连接配置。
 
 ## 数据客户端
 
@@ -662,6 +704,11 @@ conn, _, err := app.NewGRPCClient(context.Background(), "user-service")
 | Disabled | 否 | 是否跳过框架模块启动 |
 
 ## 架构
+
+详细架构文档：
+
+- [服务注册与服务发现架构设计](docs/registry-discovery-architecture.md)
+- [拦截器顺序模型](docs/Interceptor.md)
 
 ```mermaid
 flowchart LR

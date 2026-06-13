@@ -252,11 +252,23 @@ go run ./examples/registry/register
 
 Start StellMap on `localhost:18090` first, or switch `registry.adapter` and `registry.endpoints` in `examples/registry/register/application.yml` to your Etcd, Consul, or Nacos instance.
 
+Run the discovery example:
+
+```bash
+go run ./examples/discovery/simple
+```
+
+Then trigger a client-side discovery call:
+
+```text
+GET http://localhost:18092/api/v1/discovery/call
+```
+
 ## Transport Adapters
 
 Stellar keeps HTTP and RPC behind adapter interfaces.
 
-Interceptor ordering for HTTP/gRPC server and client pipelines is documented in [Interceptor.md](Interceptor.md).
+Interceptor ordering for HTTP/gRPC server and client pipelines is documented in [docs/Interceptor.md](docs/Interceptor.md).
 
 | Layer | Default | Optional implementations |
 | --- | --- | --- |
@@ -339,6 +351,8 @@ grpc:
 
 Stellar exposes service discovery behind a registry adapter. The default adapter is StellMap. Etcd, Consul, and Nacos can be selected from `application.yml` without changing business code.
 
+The service registration and discovery architecture is documented in [docs/registry-discovery-architecture.md](docs/registry-discovery-architecture.md).
+
 If only `registry.enabled`, `adapter`, and connection fields are configured, Stellar creates a registry client and exposes it through `app.ServiceRegistry()`. If `service`, `instance_id`, and `service_endpoints` are also configured, Stellar automatically registers the current instance after server transports start and deregisters it during shutdown.
 
 ```yaml
@@ -383,6 +397,34 @@ instances, err := registry.Discover(ctx, stellar.ServiceQuery{
 	Service:   "user-service",
 })
 ```
+
+For normal outbound calls, prefer client-side discovery. HTTP and gRPC named clients can discover endpoints through the configured registry backend and keep a local cache:
+
+```yaml
+http:
+  client:
+    clients:
+      user-service:
+        discovery:
+          enabled: true
+          service: user-service
+          protocol: http
+          endpoint_name: http
+          load_balance: round_robin
+
+grpc:
+  client:
+    clients:
+      user-service:
+        discovery:
+          enabled: true
+          service: user-service
+          protocol: grpc
+          endpoint_name: grpc
+          load_balance: round_robin
+```
+
+If a named client does not configure `discovery` and does not configure a static `base_url` or `target`, Stellar inherits the top-level `discovery` config, then falls back to the global `registry` connection config.
 
 ## Data Clients
 
@@ -662,6 +704,11 @@ conn, _, err := app.NewGRPCClient(context.Background(), "user-service")
 | Disabled | No | Whether framework modules should be skipped during startup |
 
 ## Architecture
+
+Detailed architecture documents:
+
+- [Service registration and discovery architecture](docs/registry-discovery-architecture.md)
+- [Interceptor ordering model](docs/Interceptor.md)
 
 ```mermaid
 flowchart LR

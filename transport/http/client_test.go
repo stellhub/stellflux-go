@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stellhub/stellar/config"
+	"github.com/stellhub/stellar/discovery"
 	"github.com/stellhub/stellar/interceptor"
 	stellarhttp "github.com/stellhub/stellar/transport/http"
 )
@@ -82,8 +83,79 @@ func TestHTTPClientUsesInterceptors(t *testing.T) {
 	}
 }
 
+func TestHTTPClientUsesDiscoveryEndpoint(t *testing.T) {
+	resolver := discovery.NewCachedResolver(&staticResolver{
+		endpoints: []discovery.Endpoint{{
+			Name:     "http",
+			Protocol: "http",
+			Host:     "127.0.0.1",
+			Port:     18081,
+		}},
+	}, discovery.Target{
+		Namespace:   "default",
+		Service:     "user-service",
+		Protocol:    "http",
+		PassingOnly: true,
+	})
+	defer func() { _ = resolver.Close(context.Background()) }()
+
+	client := stellarhttp.NewClient(
+		stellarhttp.WithClientDiscovery(resolver, discovery.NewPicker(discovery.LoadBalanceRoundRobin)),
+		stellarhttp.WithTransport(roundTripperFunc(func(req *stdhttp.Request) (*stdhttp.Response, error) {
+			if req.URL.Host != "127.0.0.1:18081" {
+				t.Fatalf("unexpected discovered host %q", req.URL.Host)
+			}
+			return &stdhttp.Response{
+				StatusCode: stdhttp.StatusOK,
+				Body:       stdhttp.NoBody,
+				Header:     stdhttp.Header{},
+				Request:    req,
+			}, nil
+		})),
+	)
+
+	req, err := stdhttp.NewRequest(stdhttp.MethodGet, "http://user-service/users/42", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+}
+
 type roundTripperFunc func(*stdhttp.Request) (*stdhttp.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *stdhttp.Request) (*stdhttp.Response, error) {
 	return f(req)
+}
+
+type staticResolver struct {
+	endpoints []discovery.Endpoint
+}
+
+func (r *staticResolver) Resolve(context.Context, discovery.Target) ([]discovery.Endpoint, error) {
+	return append([]discovery.Endpoint(nil), r.endpoints...), nil
+}
+
+func (r *staticResolver) Watch(context.Context, discovery.Target) (discovery.Watcher, error) {
+	return &staticWatcher{events: make(chan discovery.Event)}, nil
+}
+
+func (r *staticResolver) Close(context.Context) error {
+	return nil
+}
+
+type staticWatcher struct {
+	events chan discovery.Event
+}
+
+func (w *staticWatcher) Events() <-chan discovery.Event {
+	return w.events
+}
+
+func (w *staticWatcher) Close() error {
+	close(w.events)
+	return nil
 }

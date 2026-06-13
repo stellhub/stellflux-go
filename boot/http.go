@@ -31,7 +31,7 @@ func (a *App) Handler() stdhttp.Handler {
 
 func (a *App) NewHTTPClient(name string) (*stdhttp.Client, string, error) {
 	cfg := a.Config()
-	return boothttp.NewNamedClientFromConfig(cfg.HTTP.Client, name, a.observability, boothttp.WithClientInterceptors(a.interceptors))
+	return boothttp.NewNamedClientFromConfig(httpClientConfigWithDiscovery(cfg), name, a.observability, boothttp.WithClientInterceptors(a.interceptors))
 }
 
 func (a *App) registerManagementRoutes() {

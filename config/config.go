@@ -40,13 +40,15 @@ type HTTPClientConfig struct {
 	MaxIdleConns        int                              `yaml:"max_idle_conns"`
 	MaxIdleConnsPerHost int                              `yaml:"max_idle_conns_per_host"`
 	IdleConnTimeout     string                           `yaml:"idle_conn_timeout"`
+	Discovery           *DiscoveryConfig                 `yaml:"discovery"`
 	Clients             map[string]HTTPNamedClientConfig `yaml:"clients"`
 	Observability       ObservabilitySignalConfig        `yaml:"observability"`
 }
 
 type HTTPNamedClientConfig struct {
-	BaseURL string `yaml:"base_url"`
-	Timeout string `yaml:"timeout"`
+	BaseURL   string           `yaml:"base_url"`
+	Timeout   string           `yaml:"timeout"`
+	Discovery *DiscoveryConfig `yaml:"discovery"`
 }
 
 type ObservabilitySignalConfig struct {
@@ -74,15 +76,17 @@ type GRPCClientConfig struct {
 	Timeout       string                           `yaml:"timeout"`
 	Authority     string                           `yaml:"authority"`
 	Insecure      *bool                            `yaml:"insecure"`
+	Discovery     *DiscoveryConfig                 `yaml:"discovery"`
 	Clients       map[string]GRPCNamedClientConfig `yaml:"clients"`
 	Observability ObservabilitySignalConfig        `yaml:"observability"`
 }
 
 type GRPCNamedClientConfig struct {
-	Target    string `yaml:"target"`
-	Timeout   string `yaml:"timeout"`
-	Authority string `yaml:"authority"`
-	Insecure  *bool  `yaml:"insecure"`
+	Target    string           `yaml:"target"`
+	Timeout   string           `yaml:"timeout"`
+	Authority string           `yaml:"authority"`
+	Insecure  *bool            `yaml:"insecure"`
+	Discovery *DiscoveryConfig `yaml:"discovery"`
 }
 
 type RedisConfig struct {
@@ -173,6 +177,33 @@ type RegistryConfig struct {
 	ServiceEndpoints  []RegistryServiceEndpointConfig `yaml:"service_endpoints"`
 }
 
+type DiscoveryConfig struct {
+	Enabled         *bool             `yaml:"enabled"`
+	Adapter         string            `yaml:"adapter"`
+	Endpoints       []string          `yaml:"endpoints"`
+	Endpoint        string            `yaml:"endpoint"`
+	Namespace       string            `yaml:"namespace"`
+	Group           string            `yaml:"group"`
+	Cluster         string            `yaml:"cluster"`
+	Service         string            `yaml:"service"`
+	Zone            string            `yaml:"zone"`
+	Protocol        string            `yaml:"protocol"`
+	EndpointName    string            `yaml:"endpoint_name"`
+	LoadBalance     string            `yaml:"load_balance"`
+	RefreshInterval string            `yaml:"refresh_interval"`
+	StaleTTL        string            `yaml:"stale_ttl"`
+	Timeout         string            `yaml:"timeout"`
+	Username        string            `yaml:"username"`
+	Password        string            `yaml:"password"`
+	Token           string            `yaml:"token"`
+	Scheme          string            `yaml:"scheme"`
+	Datacenter      string            `yaml:"datacenter"`
+	Prefix          string            `yaml:"prefix"`
+	PassingOnly     *bool             `yaml:"passing_only"`
+	Labels          map[string]string `yaml:"labels"`
+	Metadata        map[string]string `yaml:"metadata"`
+}
+
 type RegistryServiceEndpointConfig struct {
 	Name     string `yaml:"name"`
 	Protocol string `yaml:"protocol"`
@@ -200,6 +231,7 @@ type Config struct {
 	PostgreSQL  *PostgreSQLConfig
 	Cache       *CacheConfig
 	Registry    *RegistryConfig
+	Discovery   *DiscoveryConfig
 	Starter     StarterConfig
 	Metadata    map[string]string
 }
@@ -267,6 +299,7 @@ type fileConfig struct {
 	PostgreSQL    *PostgreSQLConfig           `yaml:"postgresql"`
 	Cache         *CacheConfig                `yaml:"cache"`
 	Registry      *RegistryConfig             `yaml:"registry"`
+	Discovery     *DiscoveryConfig            `yaml:"discovery"`
 	OpenTelemetry *OpenTelemetryStarterConfig `yaml:"opentelemetry"`
 }
 
@@ -388,6 +421,9 @@ func (c Config) Normalize() Config {
 		}
 		c.Registry = &registry
 	}
+	if c.Discovery != nil {
+		c.Discovery = normalizeDiscoveryConfig(c.Discovery)
+	}
 	if c.Metadata == nil {
 		c.Metadata = map[string]string{}
 		return c
@@ -409,9 +445,11 @@ func (c HTTPConfig) Normalize() HTTPConfig {
 	}
 	if c.Client != nil {
 		client := *c.Client
+		client.Discovery = normalizeDiscoveryConfig(client.Discovery)
 		if client.Clients != nil {
 			clients := make(map[string]HTTPNamedClientConfig, len(client.Clients))
 			for key, value := range client.Clients {
+				value.Discovery = normalizeDiscoveryConfig(value.Discovery)
 				clients[key] = value
 			}
 			client.Clients = clients
@@ -436,9 +474,11 @@ func (c GRPCConfig) Normalize() GRPCConfig {
 	}
 	if c.Client != nil {
 		client := *c.Client
+		client.Discovery = normalizeDiscoveryConfig(client.Discovery)
 		if client.Clients != nil {
 			clients := make(map[string]GRPCNamedClientConfig, len(client.Clients))
 			for key, value := range client.Clients {
+				value.Discovery = normalizeDiscoveryConfig(value.Discovery)
 				clients[key] = value
 			}
 			client.Clients = clients
@@ -453,6 +493,49 @@ func (c GRPCConfig) ServerAddr() string {
 		return c.Server.Addr
 	}
 	return ":9090"
+}
+
+func normalizeDiscoveryConfig(value *DiscoveryConfig) *DiscoveryConfig {
+	if value == nil {
+		return nil
+	}
+	discovery := *value
+	if strings.TrimSpace(discovery.Adapter) == "" {
+		discovery.Adapter = "stellmap"
+	}
+	if strings.TrimSpace(discovery.Namespace) == "" {
+		discovery.Namespace = "default"
+	}
+	if strings.TrimSpace(discovery.Endpoint) != "" && len(discovery.Endpoints) == 0 {
+		discovery.Endpoints = []string{discovery.Endpoint}
+	}
+	if strings.TrimSpace(discovery.LoadBalance) == "" {
+		discovery.LoadBalance = "round_robin"
+	}
+	if strings.TrimSpace(discovery.RefreshInterval) == "" {
+		discovery.RefreshInterval = "10s"
+	}
+	if strings.TrimSpace(discovery.StaleTTL) == "" {
+		discovery.StaleTTL = "1m"
+	}
+	if discovery.Endpoints != nil {
+		discovery.Endpoints = append([]string(nil), discovery.Endpoints...)
+	}
+	if discovery.Labels != nil {
+		labels := make(map[string]string, len(discovery.Labels))
+		for key, item := range discovery.Labels {
+			labels[key] = item
+		}
+		discovery.Labels = labels
+	}
+	if discovery.Metadata != nil {
+		metadata := make(map[string]string, len(discovery.Metadata))
+		for key, item := range discovery.Metadata {
+			metadata[key] = item
+		}
+		discovery.Metadata = metadata
+	}
+	return &discovery
 }
 
 func Load() (Config, error) {
@@ -645,6 +728,7 @@ func LoadFile(path string) (Config, error) {
 		PostgreSQL:  raw.PostgreSQL,
 		Cache:       raw.Cache,
 		Registry:    raw.Registry,
+		Discovery:   raw.Discovery,
 		Starter: StarterConfig{
 			HTTP:          raw.HTTP,
 			GRPC:          raw.GRPC,

@@ -28,14 +28,25 @@ http:
     max_idle_conns: 100
     max_idle_conns_per_host: 10
     idle_conn_timeout: 90s
+    discovery:
+      enabled: true
+      adapter: stellmap
+      endpoints:
+        - http://localhost:18090
+      namespace: default
+      load_balance: round_robin
     observability:
       trace: true
       metrics: true
       logs: false
     clients:
       user-service:
-        base_url: http://localhost:8081
         timeout: 2s
+        discovery:
+          enabled: true
+          service: user-service
+          protocol: http
+          endpoint_name: http
       order-service:
         base_url: http://localhost:8082
         timeout: 5s
@@ -52,14 +63,25 @@ grpc:
     enabled: true
     timeout: 3s
     insecure: true
+    discovery:
+      enabled: true
+      adapter: stellmap
+      endpoints:
+        - http://localhost:18090
+      namespace: default
+      load_balance: round_robin
     observability:
       trace: true
       metrics: true
       logs: false
     clients:
       user-service:
-        target: dns:///localhost:19091
         timeout: 2s
+        discovery:
+          enabled: true
+          service: user-service
+          protocol: grpc
+          endpoint_name: grpc
       order-service:
         target: dns:///localhost:19092
         timeout: 5s
@@ -144,6 +166,14 @@ registry:
       port: 18080
       path: /
       weight: 100
+discovery:
+  enabled: true
+  adapter: stellmap
+  endpoints:
+    - http://localhost:18090
+  namespace: default
+  refresh_interval: 10s
+  stale_ttl: 1m
 opentelemetry:
   log: true
   trace: true
@@ -183,8 +213,14 @@ opentelemetry:
 	if cfg.HTTP.Client.Observability.Logs == nil || *cfg.HTTP.Client.Observability.Logs {
 		t.Fatalf("expected http client logs observability disabled")
 	}
+	if cfg.HTTP.Client.Discovery == nil || cfg.HTTP.Client.Discovery.Adapter != "stellmap" {
+		t.Fatalf("unexpected http client discovery config %#v", cfg.HTTP.Client.Discovery)
+	}
 	userClient := cfg.HTTP.Client.Clients["user-service"]
-	if userClient.BaseURL != "http://localhost:8081" || userClient.Timeout != "2s" {
+	if userClient.Discovery == nil || userClient.Discovery.Service != "user-service" || userClient.Discovery.EndpointName != "http" {
+		t.Fatalf("unexpected user-service discovery config %#v", userClient.Discovery)
+	}
+	if userClient.Timeout != "2s" {
 		t.Fatalf("unexpected user-service client config %#v", userClient)
 	}
 	if cfg.GRPC.Server == nil || cfg.GRPC.Server.Addr != ":19090" {
@@ -205,8 +241,14 @@ opentelemetry:
 	if cfg.GRPC.Client.Observability.Logs == nil || *cfg.GRPC.Client.Observability.Logs {
 		t.Fatalf("expected grpc client logs observability disabled")
 	}
+	if cfg.GRPC.Client.Discovery == nil || cfg.GRPC.Client.Discovery.Adapter != "stellmap" {
+		t.Fatalf("unexpected grpc client discovery config %#v", cfg.GRPC.Client.Discovery)
+	}
 	grpcUserClient := cfg.GRPC.Client.Clients["user-service"]
-	if grpcUserClient.Target != "dns:///localhost:19091" || grpcUserClient.Timeout != "2s" {
+	if grpcUserClient.Discovery == nil || grpcUserClient.Discovery.Service != "user-service" || grpcUserClient.Discovery.EndpointName != "grpc" {
+		t.Fatalf("unexpected grpc user-service discovery config %#v", grpcUserClient.Discovery)
+	}
+	if grpcUserClient.Timeout != "2s" {
 		t.Fatalf("unexpected grpc user-service client config %#v", grpcUserClient)
 	}
 	if cfg.Redis == nil || cfg.Redis.Addr != "localhost:6379" || cfg.Redis.DB != 1 {
@@ -262,6 +304,9 @@ opentelemetry:
 	}
 	if len(cfg.Registry.ServiceEndpoints) != 1 || cfg.Registry.ServiceEndpoints[0].Port != 18080 {
 		t.Fatalf("unexpected registry service endpoints %#v", cfg.Registry.ServiceEndpoints)
+	}
+	if cfg.Discovery == nil || cfg.Discovery.Adapter != "stellmap" || cfg.Discovery.RefreshInterval != "10s" {
+		t.Fatalf("unexpected discovery config %#v", cfg.Discovery)
 	}
 	if cfg.Starter.OpenTelemetry == nil || !cfg.Starter.OpenTelemetry.Log.Enabled {
 		t.Fatalf("expected opentelemetry log starter")

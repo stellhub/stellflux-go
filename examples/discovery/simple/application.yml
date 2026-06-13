@@ -1,0 +1,61 @@
+app:
+  name: stellar-discovery-simple-example
+  env: dev
+  zone: local
+
+http:
+  server:
+    enabled: true
+    port: 18092
+    adapter: gin
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+  client:
+    enabled: true
+    timeout: 3s
+    max_idle_conns: 16
+    max_idle_conns_per_host: 8
+    idle_conn_timeout: 30s
+    clients:
+      self-service:
+        discovery:
+          enabled: true
+          service: stellar-discovery-simple-example
+          protocol: http
+          endpoint_name: http
+          load_balance: round_robin
+          refresh_interval: 10s
+          stale_ttl: 1m
+
+# Start StellMap on localhost:18090 first, or switch adapter/endpoints to etcd, consul, or nacos.
+registry:
+  enabled: true
+  adapter: stellmap
+  endpoints:
+    - http://localhost:18090
+  namespace: default
+  service: stellar-discovery-simple-example
+  instance_id: stellar-discovery-simple-example-local-1
+  zone: local
+  ttl: 30s
+  heartbeat_interval: 10s
+  labels:
+    env: dev
+    version: v1
+  service_endpoints:
+    - name: http
+      protocol: http
+      host: 127.0.0.1
+      port: 18092
+      path: /
+      weight: 100
+
+opentelemetry:
+  log:
+    enabled: false
+    output: stdout
+  trace: false
+  metrics: false
+  trace_output: none

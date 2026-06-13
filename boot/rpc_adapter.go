@@ -29,7 +29,7 @@ func WithRPCServer(addr string) Option {
 
 func (a *App) NewGRPCClient(ctx context.Context, name string) (*grpc.ClientConn, string, error) {
 	cfg := a.Config()
-	return grpcgoadapter.NewNamedClientConnFromConfig(ctx, cfg.GRPC.Client, name, a.observability, grpcgoadapter.WithInterceptors(a.interceptors))
+	return grpcgoadapter.NewNamedClientConnFromConfig(ctx, grpcClientConfigWithDiscovery(cfg), name, a.observability, grpcgoadapter.WithInterceptors(a.interceptors))
 }
 
 func (a *App) setRPCAdapter(adapter bootgrpc.Adapter, registerTransport bool) {
