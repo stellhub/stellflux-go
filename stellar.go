@@ -134,22 +134,41 @@ func New(cfg Config, options ...Option) *App {
 	return boot.New(cfg, options...)
 }
 
-func Start(options ...Option) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	return StartContext(ctx, options...)
+// Start loads application.yml/application.yaml, configures the app, and starts it with context.Background.
+func Start(options ...Option) (*App, error) {
+	return StartWithContext(context.Background(), options...)
 }
 
-func StartContext(ctx context.Context, options ...Option) error {
+// StartWithContext loads application.yml/application.yaml, configures the app, and starts it.
+func StartWithContext(ctx context.Context, options ...Option) (*App, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	cfg, err := config.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	app, err := boot.NewConfigured(ctx, cfg, options...)
 	if err != nil {
+		return nil, err
+	}
+	if err := app.Start(ctx); err != nil {
+		return nil, err
+	}
+	return app, nil
+}
+
+// Run starts the configured app, waits for an interrupt signal, and then stops it.
+func Run(options ...Option) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	app, err := StartWithContext(ctx, options...)
+	if err != nil {
 		return err
 	}
-	return app.Run(ctx)
+	<-ctx.Done()
+	return app.Stop(context.Background())
 }
 
 func FromEnv(base Config) Config {

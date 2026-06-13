@@ -1,0 +1,22 @@
+app:
+  name: stellar-grpc-custom-router-example
+  env: dev
+  zone: local
+
+grpc:
+  server:
+    enabled: true
+    port: 19094
+    adapter: grpc-go
+    observability:
+      trace: true
+      metrics: true
+      logs: true
+
+opentelemetry:
+  log:
+    enabled: false
+    output: stdout
+  trace: false
+  metrics: false
+  trace_output: none

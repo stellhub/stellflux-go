@@ -62,7 +62,7 @@ import (
 )
 
 func main() {
-	if err := stellar.Start(); err != nil {
+	if err := stellar.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -187,10 +187,10 @@ opentelemetry:
   metrics: true
 ```
 
-运行 HTTP 示例：
+运行 HTTP server 示例：
 
 ```bash
-go run ./examples/http-simple-examples
+go run ./examples/http/server/simple
 ```
 
 然后访问：
@@ -201,10 +201,22 @@ GET http://localhost:8080/stellar/status
 GET http://localhost:8080/metrics
 ```
 
+运行 HTTP client 示例：
+
+```bash
+go run ./examples/http/client/simple
+```
+
 运行 gRPC 示例：
 
 ```bash
-go run ./examples/grpc-simple-examples
+go run ./examples/grpc/server/simple
+```
+
+运行 gRPC custom router 示例：
+
+```bash
+go run ./examples/grpc/server/custom-router
 ```
 
 ## 传输适配器
@@ -390,16 +402,16 @@ deleted, err := localCache.Delete(ctx, "demo")
 运行独立数据客户端示例：
 
 ```bash
-go run ./examples/redis-example
-go run ./examples/mysql-example
-go run ./examples/postgresql-example
-go run ./examples/cache-example
+go run ./examples/redis/crud-http
+go run ./examples/mysql/crud-http
+go run ./examples/postgresql/crud-http
+go run ./examples/cache/crud-http
 ```
 
 这些示例只需要：
 
 ```go
-stellar.Start()
+stellar.Run()
 ```
 
 Redis、MySQL、PostgreSQL、cache 客户端及其 debug API 都由 `application.yml` 启用，不需要在 `main` 中显式传入 starter。
@@ -496,9 +508,20 @@ Stellar 会按下面顺序读取配置：
 命令行或环境变量显式指定的值可以是 `application.yml` / `application.yaml` 文件路径，也可以是包含这些文件的目录。
 
 ```bash
-go run ./examples/http-simple-examples --config ./examples/http-simple-examples/application.yml
-STELLAR_CONFIG_FILE=./examples/http-simple-examples/application.yml go run ./examples/http-simple-examples
+go run ./examples/http/server/simple --config ./examples/http/server/simple/application.yml
+STELLAR_CONFIG_FILE=./examples/http/server/simple/application.yml go run ./examples/http/server/simple
 ```
+
+如果代码需要拿到已配置并已启动的 app，但不想手动加载配置，可以使用：
+
+```go
+app, err := stellar.Start()
+if err != nil {
+	return err
+}
+```
+
+当应用需要使用自定义 context 启动时，使用 `stellar.StartWithContext(ctx)`。
 
 OpenTelemetry 默认行为：
 

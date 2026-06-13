@@ -358,7 +358,7 @@ func TestLoadFileRejectsUnsupportedConfigName(t *testing.T) {
 }
 
 func TestConfigPathsPreferMainDirBeforeWorkingDir(t *testing.T) {
-	mainDir := filepath.Join("repo", "examples", "http-simple-examples")
+	mainDir := filepath.Join("repo", "examples", "http", "server", "simple")
 	workingDir := filepath.Join("repo")
 
 	paths := configPathsInDirs(mainDir, workingDir)

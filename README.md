@@ -62,7 +62,7 @@ import (
 )
 
 func main() {
-	if err := stellar.Start(); err != nil {
+	if err := stellar.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -187,10 +187,10 @@ opentelemetry:
   metrics: true
 ```
 
-Run the included HTTP example:
+Run the included HTTP server example:
 
 ```bash
-go run ./examples/http-simple-examples
+go run ./examples/http/server/simple
 ```
 
 Then open:
@@ -201,10 +201,22 @@ GET http://localhost:8080/stellar/status
 GET http://localhost:8080/metrics
 ```
 
+Run the included HTTP client example:
+
+```bash
+go run ./examples/http/client/simple
+```
+
 Run the included gRPC example:
 
 ```bash
-go run ./examples/grpc-simple-examples
+go run ./examples/grpc/server/simple
+```
+
+Run the included gRPC custom router example:
+
+```bash
+go run ./examples/grpc/server/custom-router
 ```
 
 ## Transport Adapters
@@ -390,16 +402,16 @@ deleted, err := localCache.Delete(ctx, "demo")
 Run the standalone data client examples:
 
 ```bash
-go run ./examples/redis-example
-go run ./examples/mysql-example
-go run ./examples/postgresql-example
-go run ./examples/cache-example
+go run ./examples/redis/crud-http
+go run ./examples/mysql/crud-http
+go run ./examples/postgresql/crud-http
+go run ./examples/cache/crud-http
 ```
 
 These examples use only:
 
 ```go
-stellar.Start()
+stellar.Run()
 ```
 
 Redis/MySQL/PostgreSQL/cache clients and their debug APIs are enabled by `application.yml`, not by passing explicit starters in `main`.
@@ -496,9 +508,20 @@ Stellar reads configuration in this order:
 The explicit command line or environment value can be either an `application.yml` / `application.yaml` file path or a directory that contains one of those files.
 
 ```bash
-go run ./examples/http-simple-examples --config ./examples/http-simple-examples/application.yml
-STELLAR_CONFIG_FILE=./examples/http-simple-examples/application.yml go run ./examples/http-simple-examples
+go run ./examples/http/server/simple --config ./examples/http/server/simple/application.yml
+STELLAR_CONFIG_FILE=./examples/http/server/simple/application.yml go run ./examples/http/server/simple
 ```
+
+When code needs the configured and started app without manually loading configuration, use:
+
+```go
+app, err := stellar.Start()
+if err != nil {
+	return err
+}
+```
+
+Use `stellar.StartWithContext(ctx)` when the app should start with a custom context.
 
 OpenTelemetry defaults:
 

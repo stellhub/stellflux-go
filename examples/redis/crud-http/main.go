@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	if err := stellar.Start(); err != nil {
+	if err := stellar.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
